@@ -8,6 +8,7 @@ import numpy as np
 import qclab.dynamics as dynamics
 from qclab.utils import get_log_output, reset_log_output
 from qclab import Data
+from qclab.dynamics.progress import BatchProgressBars, SerialProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,30 @@ def parallel_driver_mpi(sim, seeds=None, data=None, num_tasks=None):
         )
     # Execute the local batches.
     logger.info("Starting dynamics calculation.")
-    local_results = [dynamics.run_dynamics(*x) for x in local_input_data]
+    sim.initialize_timesteps()
+    steps_per_batch = len(sim.settings.t_update_n)
+    progress_enabled = getattr(sim.settings, "progress_bar", True)
+    batch_bars = BatchProgressBars(
+        chunk_size, steps_per_batch, enabled=progress_enabled
+    )
+    local_results = []
+    completed_batches = 0
+    for batch in local_input_data:
+        progress_reporter = (
+            SerialProgressReporter(batch_bars if progress_enabled else None, steps_per_batch)
+            if progress_enabled
+            else None
+        )
+        local_results.append(
+            dynamics.run_dynamics(
+                batch[0], batch[1], batch[2], batch[3], progress_reporter=progress_reporter
+            )
+        )
+        completed_batches += 1
+        if progress_enabled:
+            batch_bars.set_total(completed_batches)
+            if completed_batches != chunk_size:
+                batch_bars.set_slowest(0)
     comm.Barrier()
     logger.info("Dynamics calculation completed.")
     # Collect results sequentially on rank 0.
@@ -134,6 +158,8 @@ def parallel_driver_mpi(sim, seeds=None, data=None, num_tasks=None):
             comm.send(result, dest=0, tag=tag_data)
         comm.send(None, dest=0, tag=tag_done)
     logger.info("Simulation complete.")
+    if progress_enabled:
+        batch_bars.close()
     # Collect logs from all ranks and attach combined output on root rank.
     gathered_logs = comm.gather(get_log_output(), root=0)
     if rank == 0:

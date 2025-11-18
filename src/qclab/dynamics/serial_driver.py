@@ -7,6 +7,7 @@ import numpy as np
 import qclab.dynamics as dynamics
 from qclab.utils import get_log_output, reset_log_output
 from qclab import Data
+from qclab.dynamics.progress import BatchProgressBars, SerialProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,13 @@ def serial_driver(sim, seeds=None, data=None):
         num_batches,
         sim.settings.batch_size,
     )
+    sim.initialize_timesteps()
+    steps_per_batch = len(sim.settings.t_update_n)
+    progress_enabled = getattr(sim.settings, "progress_bar", True)
+    batch_bars = BatchProgressBars(
+        num_batches, steps_per_batch, enabled=progress_enabled
+    )
+    completed_batches = 0
     for n in range(num_batches):
         batch_seeds = seeds[
             n * sim.settings.batch_size : (n + 1) * sim.settings.batch_size
@@ -74,11 +82,25 @@ def serial_driver(sim, seeds=None, data=None):
         state = {"seed": batch_seeds}
         new_data = Data(batch_seeds)
         logger.info("Starting dynamics calculation.")
-        new_data = dynamics.run_dynamics(sim, state, parameters, new_data)
+        progress_reporter = (
+            SerialProgressReporter(batch_bars if progress_enabled else None, steps_per_batch)
+            if progress_enabled
+            else None
+        )
+        new_data = dynamics.run_dynamics(
+            sim, state, parameters, new_data, progress_reporter=progress_reporter
+        )
         logger.info("Dynamics calculation completed.")
         logger.info("Collecting results.")
         data.add_data(new_data)
+        completed_batches += 1
+        if progress_enabled:
+            batch_bars.set_total(completed_batches)
+            if n != num_batches - 1:
+                batch_bars.set_slowest(0)
     logger.info("Simulation complete.")
+    if progress_enabled:
+        batch_bars.close()
     # Attach the collected log output to the data object before returning.
     data.log = get_log_output()
     return data
