@@ -33,7 +33,7 @@ jobs:
 
       # Publish to TestPyPI via OIDC (no username/password)
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@v1.10.1
+        uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true   # don't fail if version already uploaded
