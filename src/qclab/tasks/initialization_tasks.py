@@ -2,19 +2,20 @@
 This module contains the tasks that initialize quantities in the state and parameters
 objects.
 
-These are typically used in the initialization recipe of the algorithm object.
+These are typically used in the initialization recipe of the Algorithm object.
 """
 
 import logging
 import numpy as np
-from qclab import functions
+import copy
+from qclab import functions, Simulation
 
 logger = logging.getLogger(__name__)
 
 
-def initialize_variable_objects(sim, state, parameters, **kwargs):
+def initialize_variable_objects(sim: Simulation, state: dict, parameters: dict):
     """
-    Populates the state object with non-private variables in ``sim.initial_state``, and an empty
+    Populates the State object with non-private variables in ``sim.initial_state``, and an empty
     dictionary for storing output quantities.
 
     For any non-private (i.e. not beginning with "_") ndarray in ``sim.initial_state``,
@@ -22,19 +23,21 @@ def initialize_variable_objects(sim, state, parameters, **kwargs):
     ``original_shape`` is the shape of the array in ``sim.initial_state``.
     The new array is initialized by copying the original array into each slice along the first axis.
 
-    .. rubric:: Required Constants
-    None
+    Reads
+    -----
+    sim.initial_state[name]: ndarray of shape original_shape with dtype=original_dtype
+        Any ndarray in initial_state that does not have a key beginning with "_".
 
-    .. rubric:: Keyword Arguments
-    None
+    Writes
+    ------
+    state[name]: ndarray of shape (B, *original_shape) and dtype=original_dtype
+        Corresponding ndarray with a shape expanded over a new trajecgtory index.
+    state["output_dict"]: dict
+        Dictionary to store output quantities during a simulation.
 
-    .. rubric:: Modifications
-    state[name] : ndarray
-        Initialized state variable with shape (batch_size, *original_shape).
-        ``name`` is the name of the variable in ``sim.initial_state``.
-    state["output_dict"] : dict
-        Dictionary to store output quantities during the simulation.
-
+    Notes
+    -----
+    * B = sim.settings.batch_size
     """
     for name in sim.initial_state.keys():
         obj = sim.initial_state[name]
@@ -58,27 +61,40 @@ def initialize_variable_objects(sim, state, parameters, **kwargs):
     return state, parameters
 
 
-def initialize_norm_factor(sim, state, parameters, **kwargs):
+def initialize_norm_factor(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    norm_factor_name: str = "norm_factor",
+):
     """
-    Assigns the normalization factor to the state object.
+    Assigns the normalization factor to the State object.
 
-    .. rubric:: Required Constants
-    None
+    When collected values are summed in the Data object the normalization factor
+    is used to normalize the sum to a trajectory average. In all algorithms in
+    QC Lab this is equivalent to the batch size.
 
-    .. rubric:: Keyword Arguments
-    norm_factor_name : str, default: "norm_factor"
-        Name of the normalization factor in the state object.
+    Optional Keyword Arguments
+    --------------------------
+    norm_factor_name:
+        Name of the normalization factor in the State object.
 
-    .. rubric:: Modifications
-    state[norm_factor_name] : int
+    Writes
+    ------
+    state[norm_factor_name]:
         Normalization factor for trajectory averages.
     """
-    norm_factor_name = kwargs.get("norm_factor_name", "norm_factor")
     state[norm_factor_name] = sim.settings.batch_size
     return state, parameters
 
 
-def initialize_branch_seeds(sim, state, parameters, **kwargs):
+def initialize_branch_seeds(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    seed_name: str = "seed",
+    branch_ind_name: str = "branch_ind",
+):
     """
     Converts seeds into branch seeds for deterministic surface hopping.
 
@@ -92,23 +108,29 @@ def initialize_branch_seeds(sim, state, parameters, **kwargs):
     being equal to the number of trajectories divided by the number of
     branches in deterministic surface hopping.
 
-    .. rubric:: Required Constants
-    None
-
-    .. rubric:: Keyword Arguments
-    seed_name : str, default: "seed"
-        Name of the seeds array in ``state``.
-    branch_ind_name : str, default: "branch_ind"
+    Optional Keyword Arguments
+    --------------------------
+    seed_name:
+        Name of seed array in State object.
+    branch_ind_name:
         Name of the branch index array in ``state``.
 
-    .. rubric:: Modifications
-    state[branch_ind_name] : ndarray
+    Reads
+    -----
+    state[seed_name]: ndarray of shape (B,), dtype=int
+        Seed for each trajectory.
+
+    Writes
+    ------
+    state[seed_name]
+        Seed for each trajectory remapped for the number of branches.
+    state[branch_ind_name]
         Branch index for each trajectory.
-    state[seed_name] : ndarray
-        Seeds remapped for branches.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
     """
-    seed_name = kwargs.get("seed_name", "seed")
-    branch_ind_name = kwargs.get("branch_ind_name", "branch_ind")
     # First ensure that the number of branches is correct.
     if sim.algorithm.settings.fssh_deterministic:
         num_branches = sim.model.constants.num_quantum_states
@@ -138,7 +160,13 @@ def initialize_branch_seeds(sim, state, parameters, **kwargs):
     return state, parameters
 
 
-def initialize_z_mcmc(sim, state, parameters, **kwargs):
+def initialize_z_mcmc(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    seed_name: str = "seed",
+    z_name: str = "z",
+):
     """
     Initializes classical coordinates according to Boltzmann statistics using Markov-
     Chain Monte Carlo with a Metropolis-Hastings algorithm.
@@ -150,32 +178,47 @@ def initialize_z_mcmc(sim, state, parameters, **kwargs):
     the classical Hamiltonian can be written as a sum of independent terms depending
     on each classical coordinate.
 
-    .. rubric:: Required Constants
-    mcmc_burn_in_size : int, default: 1000
+    Optional Keyword Arguments
+    --------------------------
+    seed_name:
+        Name of seed array in State object.
+    z_name:
+        Name of destination attribute in ``state``.
+
+    Constants and Settings
+    ----------------------
+    sim.model.constants.mcmc_burn_in_size: int, default: 1000
         Burn-in step count.
-    mcmc_sample_size : int, default: 10000
+    sim.model.constants.mcmc_sample_size: int, default: 10000
         Number of retained samples.
-    mcmc_std : float, default: 1.0
+    sim.model.constants.mcmc_std: float, default: 1.0
         Sampling standard deviation.
-    mcmc_h_c_separable : bool, default: True
-        Whether the classical Hamiltonian is separable.
-    mcmc_init_z : ndarray, default: output of ``gen_sample_gaussian``
-        Initial coordinate sample.
-    kBT : float
-        Thermal quantum.
+    sim.model.constants.mcmc_init_z: ndarray, default: random sample generated by ``functions.gen_sample_gaussian``
+        Initial value of the coordinate at the outset of sampling.
+    sim.model.constants.kBT: float
+        Thermal energy.
 
-    .. rubric:: Keyword Arguments
-    seed_name : str
-        Attribute name of the seeds array in ``state``.
-    z_name : str
-        Name of destination attribute in the ``state`` object.
+    Ingredients
+    -----------
+    h_c:
+        Classical Hamiltonian.
 
-    .. rubric:: Modifications
-    state[z_name] : ndarray
-        Initialized classical coordinates.
+    Reads
+    -----
+    state[seed_name]: ndarray of shape (B,), dtype=int
+        Seed for each trajectory.
+
+    Writes
+    ------
+    state[z_name]: ndarray of shape (B, C), dtype=complex128
+        Classical coordinate in each trajectory.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * C = sim.model.constants.num_classical_coordinates
     """
-    seed = getattr(state, kwargs["seed_name"])
-    z_name = kwargs["z_name"]
+    seed = state[seed_name]
     burn_in_size = sim.model.constants.get("mcmc_burn_in_size", 1000)
     sample_size = sim.model.constants.get("mcmc_sample_size", 10000)
     mcmc_h_c_separable = sim.model.constants.get("mcmc_h_c_separable", True)
@@ -291,27 +334,45 @@ def initialize_z_mcmc(sim, state, parameters, **kwargs):
     return state, parameters
 
 
-def initialize_z(sim, state, parameters, **kwargs):
+def initialize_z(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    seed_name: str = "seed",
+    z_name: str = "z",
+):
     """
     Initializes the classical coordinate by using the init_classical function from the
-    model object.
+    Model object.
 
-    .. rubric:: Required Constants
-    None
+    Optional Keyword Arguments
+    --------------------------
+    seed_name:
+        Name of seed array in State object.
+    z_name:
+        Name of classical coordinate in State object.
 
-    .. rubric:: Keyword Arguments
-    seed_name : str
-        Name of seed attribute in state object.
-    z_name : str
-        Name of classical coordinates in the state object.
+    Ingredients
+    -----------
+    init_classical:
+        Classical coordinate initialization.
 
-    .. rubric:: Modifications
-    state[z_name] : ndarray
-        initialized classical coordinates.
+    Reads
+    -----
+    state[seed_name]: ndarray of shape (B,), dtype=int
+        Seed in each trajectory.
+
+    Writes
+    ------
+    state[z_name] : ndarray of shape (B, C), dtype=complex128
+        Initialized classical coordinates.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * C = sim.model.constants.num_classical_coordinates
     """
-    seed_name = kwargs.get("seed_name", "seed")
     seed = state[seed_name]
-    z_name = kwargs.get("z_name", "z")
     init_classical, has_init_classical = sim.model.get("init_classical")
     if has_init_classical:
         state[z_name] = init_classical(sim.model, parameters, seed=seed)
@@ -322,28 +383,104 @@ def initialize_z(sim, state, parameters, **kwargs):
     return state, parameters
 
 
-def copy_in_state(sim, state, parameters, **kwargs):
+def copy_in_state(
+    sim: Simulation, state: dict, parameters: dict, orig_name: str, copy_name: str
+):
     """
-    Creates a copy of a variable in the state object with a new name.
+    Creates a copy of a variable in the State object with a new name.
 
-    .. rubric:: Required Constants
-    None
 
-    .. rubric:: Keyword Arguments
-    copy_name : str
-        Name of the copy in the state object.
-    orig_name : str
-        Name of the source in the state object.
+    Optional Keyword Arguments
+    --------------------------
+    orig_name:
+        Name of the original in the State object.
+    copy_name:
+        Name of the copy in the State object.
 
-    .. rubric:: Modifications
-    state[copy_name] : type of state[orig_name]
-        Copy of ``state[orig_name]``.
+    Reads
+    -----
+    state[orig_name]:
+        Object to be copied.
+
+    Writes
+    ------
+    state[copy_name]:
+        Copy of object.
     """
-    state[kwargs["copy_name"]] = np.copy(state[kwargs["orig_name"]])
+    if orig_name in state.keys():
+        state[copy_name] = copy.copy(state[orig_name])
     return state, parameters
 
 
-def initialize_active_surface(sim, state, parameters, **kwargs):
+def copy_in_parameters(
+    sim: Simulation, state: dict, parameters: dict, orig_name: str, copy_name: str
+):
+    """
+    Creates a copy of a variable in the Parameters object with a new name.
+
+
+    Optional Keyword Arguments
+    --------------------------
+    orig_name:
+        Name of the original in the Parameters object.
+    copy_name:
+        Name of the copy in the Parameters object.
+
+    Reads
+    -----
+    parameters[orig_name]:
+        Object to be copied.
+
+    Writes
+    ------
+    parameters[copy_name]:
+        Copy of object.
+    """
+    parameters[copy_name] = copy.copy(parameters[orig_name])
+    return state, parameters
+
+
+def copy_to_parameters(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    state_name: str,
+    parameters_name: str,
+):
+    """
+    Copies an object from the State object to the Parameters object.
+
+    Optional Keyword Arguments
+    --------------------------
+    state_name:
+        Name of the object in the State object.
+    parameters_name:
+        Name of the object in the Parameters object.
+
+    Reads
+    -----
+    state[state_name]:
+        Object to be copied.
+
+    Writes
+    ------
+    parameters[parameters_name]:
+        Copy of object.
+    """
+    parameters[parameters_name] = copy.copy(state[state_name])
+    return state, parameters
+
+
+def initialize_active_surface(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    act_surf_ind_0_name: str = "act_surf_ind_0",
+    act_surf_ind_name: str = "act_surf_ind",
+    act_surf_name: str = "act_surf",
+    init_act_surf_rand_vals_name: str = "init_act_surf_rand_vals",
+    wf_adb_name: str = "wf_adb",
+):
     """
     Initializes the active surface, active surface index, and initial active
     surface index for FSSH.
@@ -356,36 +493,43 @@ def initialize_active_surface(sim, state, parameters, **kwargs):
     surface from the density corresponding to the initial quantum wavefunction
     in the adiabatic basis.
 
-    .. rubric:: Required Constants
-    None
-
-    .. rubric:: Keyword Arguments
-    act_surf_ind_0_name : str, default: "act_surf_ind_0"
-        Name of the initial active surface index in the state object.
-    act_surf_ind_name : str, default: "act_surf_ind"
-        Name of the active surface index in the state object.
-    act_surf_name : str, default: "act_surf"
-        Name of the active surface in the state object.
-    init_act_surf_rand_vals_name : str, default: "init_act_surf_rand_vals"
+    Optional Keyword Arguments
+    --------------------------
+    act_surf_ind_0_name:
+        Name of the initial active surface index in the State object.
+    act_surf_ind_name:
+        Name of the active surface index in the State object.
+    act_surf_name:
+        Name of the active surface in the State object.
+    init_act_surf_rand_vals_name: str, default:
         Name of the random numbers for active surface initialization in FSSH.
-    wf_adb_name : str, default: "wf_adb"
-        Name of the adiabatic wavefunction in the state object.
+    wf_adb_name: str, default:
+        Name of the adiabatic wavefunction in the State object.
 
-    .. rubric:: Modifications
-    state[act_surf_ind_0_name] : ndarray
-        Initial active surface index.
-    state[act_surf_ind_name] : ndarray
-        Current active surface index.
-    state[act_surf_name] : ndarray
-        Active surface wavefunctions.
+    Constants and Settings
+    ----------------------
+    sim.algorithm.settings.fssh_deterministic: Bool
+        Boolean indicating if the FSSH simulation is deterministic.
+
+    Reads
+    -----
+    state[wf_adb_name]: ndarray of shape (B, N), dtype=complex128
+        Wavefunction coefficients in the adiabatic basis.
+
+    Writes
+    ------
+    state[act_surf_ind_0_name]: ndarray of shape (B,), dtype=int
+        Active surface index at the start of the simulation.
+    state[act_surf_ind_name]: ndarray of shape (B,), dtype=int
+        Active surface index.
+    state[act_surf_name]: ndarray of shape (B, N), dtype=int
+        Active surface vector in adiabatic basis: 1 if active 0 if not.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * N = sim.model.constants.num_quantum_states
     """
-    act_surf_ind_0_name = kwargs.get("act_surf_ind_0_name", "act_surf_ind_0")
-    act_surf_ind_name = kwargs.get("act_surf_ind_name", "act_surf_ind")
-    act_surf_name = kwargs.get("act_surf_name", "act_surf")
-    init_act_surf_rand_vals_name = kwargs.get(
-        "init_act_surf_rand_vals_name", "init_act_surf_rand_vals"
-    )
-    wf_adb_name = kwargs.get("wf_adb_name", "wf_adb")
     wf_adb = state[wf_adb_name]
     init_act_surf_rand_vals = state[init_act_surf_rand_vals_name]
     if sim.algorithm.settings.fssh_deterministic:
@@ -416,43 +560,60 @@ def initialize_active_surface(sim, state, parameters, **kwargs):
     return state, parameters
 
 
-def initialize_random_values_fssh(sim, state, parameters, **kwargs):
+def initialize_random_values_fssh(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    hop_prob_rand_vals_name: str = "hop_prob_rand_vals",
+    init_act_surf_rand_vals_name: str = "init_act_surf_rand_vals",
+    seed_name: str = "seed",
+):
     """
     Initializes a set of random numbers using the trajectory seeds for FSSH.
 
     .. rubric:: Required Constants
     None
 
-    .. rubric:: Keyword Arguments
-    hop_prob_rand_vals_name : str, default: "hop_prob_rand_vals"
-        Name of the random numbers for hop decisions in the state object.
-    init_act_surf_rand_vals_name : str, default: "init_act_surf_rand_vals"
+    Optional Keyword Arguments
+    --------------------------
+    hop_prob_rand_vals_name:
+        Name of the random numbers for hop decisions in the State object.
+    init_act_surf_rand_vals_name:
         Name of the random numbers for active surface initialization in FSSH.
-    seed_name : str, default: "seed"
-        Name of the seeds array in the state object.
+    seed_name:
+        Name of seed array in State object.
 
-    .. rubric:: Modifications
-    state[hop_prob_rand_vals_name] : ndarray
+    Constants and Settings
+    ----------------------
+    sim.algorithm.settings.fssh_deterministic: Bool
+        Boolean indicating if the FSSH simulation is deterministic.
+
+    Reads
+    -----
+    state[seed_name]
+
+    Writes
+    ------
+    state[hop_prob_rand_vals_name]: ndarray of shape (B//b, t), dtype=float64
         Random numbers for hop decisions.
-    state[init_act_surf_rand_vals_name] : ndarray
+    state[init_act_surf_rand_vals_name]
         Random numbers for active surface selection in stochastic FSSH.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * b = sim.model.constants.num_quantum_states if fssh_deterministic == True, b = 1 otherwise.
+    * t is the number of update timesteps.
     """
-    hop_prob_rand_vals_name = kwargs.get(
-        "hop_prob_rand_vals_name", "hop_prob_rand_vals"
-    )
-    init_act_surf_rand_vals_name = kwargs.get(
-        "init_act_surf_rand_vals_name", "init_act_surf_rand_vals"
-    )
-    seed_name = kwargs.get("seed_name", "seed")
     seed = state[seed_name]
     if sim.algorithm.settings.fssh_deterministic:
         num_branches = sim.model.constants.num_quantum_states
     else:
         num_branches = 1
-    batch_size = sim.settings.batch_size // num_branches
-    hop_prob_rand_vals = np.zeros((batch_size, len(sim.settings.t_update)))
-    init_act_surf_rand_vals = np.zeros((batch_size, num_branches))
-    for nt in range(batch_size):
+    num_trajs = sim.settings.batch_size // num_branches
+    hop_prob_rand_vals = np.zeros((num_trajs, len(sim.settings.t_update)))
+    init_act_surf_rand_vals = np.zeros((num_trajs, num_branches))
+    for nt in range(num_trajs):
         np.random.seed(seed[int(nt * num_branches)])
         hop_prob_rand_vals[nt] = np.random.rand(len(sim.settings.t_update))
         init_act_surf_rand_vals[nt] = np.random.rand(num_branches)
@@ -461,25 +622,40 @@ def initialize_random_values_fssh(sim, state, parameters, **kwargs):
     return state, parameters
 
 
-def initialize_dm_adb_0_fssh(sim, state, parameters, **kwargs):
+def initialize_dm_adb_0_fssh(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    dm_adb_0_name: str = "dm_adb_0",
+    wf_adb_name: str = "wf_adb",
+):
     """
     Initializes the initial adiabatic density matrix for FSSH.
 
-    .. rubric:: Required Constants
-    None
+    Optional Keyword Arguments
+    --------------------------
+    dm_adb_0_name:
+        Name of the initial adiabatic density matrix in the State object.
+    wf_adb_name:
+        Name of the adiabatic wavefunction in the State object.
 
-    .. rubric:: Keyword Arguments
-    dm_adb_0_name : str, default: "dm_adb_0"
-        Name of the initial adiabatic density matrix in the state object.
-    wf_adb_name : str, default: "wf_adb"
-        Name of the adiabatic wavefunction in the state object.
+    Reads
+    -----
+    state[wf_adb_name]: ndarray of shape (B, N), dtype=complex128
+        Wavefunction coefficients in the adiabatic basis.
 
-    .. rubric:: Modifications
-    state[dm_adb_0_name] : ndarray
-        Initial adiabatic density matrix.
+
+    Writes
+    ------
+    state[dm_adb_0_name]: ndarray of shape (B, N, N), dtype=complex128
+        Initial density matrix in the adiabatic basis.
+
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * N = sim.model.constants.num_quantum_states
     """
-    dm_adb_0_name = kwargs.get("dm_adb_0_name", "dm_adb_0")
-    wf_adb_name = kwargs.get("wf_adb_name", "wf_adb")
     wf_adb = state[wf_adb_name]
     state[dm_adb_0_name] = np.einsum(
         "ti,tj->tij",
