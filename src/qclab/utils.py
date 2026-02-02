@@ -17,6 +17,12 @@ try:
 except ImportError:
     DISABLE_H5PY = True
 
+DISABLE_ASE = False
+try:
+    import ase as _
+except ImportError:
+    DISABLE_ASE = True
+
 
 logger = logging.getLogger(__name__)
 
