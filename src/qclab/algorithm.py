@@ -40,7 +40,7 @@ class Algorithm:
 
         .. rubric:: Args
         sim: Simulation
-            The simulation object containing settings and parameters.
+            The Simulation object containing settings and parameters.
         state: dict
             The dictionary containing the current simulation state.
         parameters: dict

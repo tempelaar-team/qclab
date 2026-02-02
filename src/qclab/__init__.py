@@ -11,6 +11,7 @@ from qclab.utils import configure_memory_logger
 import qclab.models
 import qclab.algorithms
 import qclab.dynamics
+import qclab.interfaces
 
 configure_memory_logger()
 
