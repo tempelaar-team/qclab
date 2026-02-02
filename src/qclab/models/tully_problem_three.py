@@ -11,7 +11,7 @@ from qclab import functions
 
 class TullyProblemThree(Model):
     """
-    Tully's third problem: an extended coupling with reflection.
+    A Model class for Tully's third problem: an extended coupling with reflection.
 
     Reference publication:
     Tully. J. Chem. Phys. 1990, 93 (2), 1061–1071. https://doi.org/10.1063/1.459170.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qclab"
-version = "1.0.1"
+version = "1.1.0"
 description = "QC Lab: a python package for quantum-classical modeling."
 readme = "README.rst"
 requires-python = ">=3.8"

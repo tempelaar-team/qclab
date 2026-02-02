@@ -17,7 +17,7 @@ def serial_driver(sim, seeds=None, data=None):
 
     .. rubric:: Args
     sim: Simulation
-        The simulation object containing the model, algorithm, initial state, and settings.
+        The Simulation object containing the model, algorithm, initial state, and settings.
     seeds: ndarray, optional
         An array of integer seeds for the trajectories. If None, seeds will be
         generated automatically.
@@ -79,6 +79,6 @@ def serial_driver(sim, seeds=None, data=None):
         logger.info("Collecting results.")
         data.add_data(new_data)
     logger.info("Simulation complete.")
-    # Attach the collected log output to the data object before returning.
+    # Attach the collected log output to the Data object before returning.
     data.log = get_log_output()
     return data

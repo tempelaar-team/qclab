@@ -9,7 +9,7 @@ from qclab import ingredients
 
 class HolsteinLattice(Model):
     """
-    A model representing a nearest-neighbor tight-binding model with Holstein-type
+    A Model class representing a nearest-neighbor tight-binding model with Holstein-type
     electron-phonon coupling with a single optical mode.
 
     Reference publication:
@@ -55,7 +55,7 @@ class HolsteinLattice(Model):
         g = self.constants.get("g")
         h = self.constants.classical_coordinate_weight
         self.constants.diagonal_linear_coupling = np.diag(
-            g * w * np.sqrt(h / w) * np.ones(N)
+            g * w * np.sqrt(w / h) * np.ones(N)
         )
         return
 
@@ -140,12 +140,12 @@ class HolsteinLatticeReciprocalSpace(Model):
 
     def h_qc(self, parameters, **kwargs):
         z = kwargs["z"]
-        batch_size = len(z)
         g = self.constants.get("g")
         w = self.constants.get("w")
+        h = self.constants.classical_coordinate_weight
         z_kap_mat = z[:, self.constants.k_diff_inds]
         zc_mkap_mat = np.conj(z[:, self.constants.k_diff_inds.transpose()])
-        h_qc = (g * w / np.sqrt(self.constants.num_quantum_states)) * (
+        h_qc = (g * w * np.sqrt(w / h) / np.sqrt(self.constants.num_quantum_states)) * (
             z_kap_mat + zc_mkap_mat
         )
         return h_qc
@@ -155,6 +155,7 @@ class HolsteinLatticeReciprocalSpace(Model):
         batch_size = len(z)
         g = self.constants.get("g")
         w = self.constants.get("w")
+        h = self.constants.classical_coordinate_weight
         out = np.zeros(
             (
                 batch_size,
@@ -167,7 +168,7 @@ class HolsteinLatticeReciprocalSpace(Model):
         for k_ind in self.constants.k_inds:
             pos = np.where(self.constants.k_diff_inds.transpose() == k_ind)
             out[:, k_ind, pos[0], pos[1]] = (
-                g * w / np.sqrt(self.constants.num_quantum_states)
+                g * w * np.sqrt(w / h) / np.sqrt(self.constants.num_quantum_states)
             )
         shape = (
             batch_size,

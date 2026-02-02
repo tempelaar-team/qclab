@@ -21,26 +21,49 @@ FINITE_DIFFERENCE_DELTA = 1e-6
 # Speed of light [m/s].
 C_M_PER_S = 299792458
 
-# Planck constant [J*s].
+# Planck constant [J * s].
 H_J_S = 6.62607015e-34
 
 # Boltzmann constant [J/K].
-KB_J_PER_K = 1.380649e-23
+K_B_J_PER_K = 1.380649e-23
 
-# Conversion from Joules to inverse centimeters.
-# J_TO_INVCM = 1 / (100[cm/m] * c[m/s] * h[J*s])
-# A[J] * J_TO_INVCM = A[INVCM]
-J_TO_INVCM = 1 / (100 * C_M_PER_S * H_J_S)
+# Hartree energy in Joules.
+HA_J = 4.3597447222060e-18
 
-# Boltzmann constant [invcm/K].
-KB_INVCM_PER_K = KB_J_PER_K * J_TO_INVCM
-
-# Reduced Planck constant [J*s].
+# Reduced Planck constant [J·s].
 HBAR_J_S = H_J_S / (2 * np.pi)
 
-# Thermal energy [invcm] at a reference temperature of 300 [K].
-KBT_300K_INVCM = KB_INVCM_PER_K * 300
+# Reference temperature [K].
+T_REF_K = 300
+
+# Thermal energy at the reference temperature [J].
+KBT_REF_J = K_B_J_PER_K * T_REF_K
+
+# h * c [J*m].
+HC_J_M = H_J_S * C_M_PER_S
 
 # Conversion between inverse centimeters to reference energy.
-# A [INVCM] * INVCM_TO_300K = A [300K]
-INVCM_TO_300K = 1 / KBT_300K_INVCM
+# kBT / invcm = (100 [cm / m]) * hc[J*m] / kBT [J]
+# A[INVCM] * INVCM_TO_KBT_REF = A[KBT_REF]
+INVCM_TO_KBT_REF = 100 * HC_J_M / KBT_REF_J
+
+# Alias to old name for backwards-compatibility.
+INVCM_TO_300K = INVCM_TO_KBT_REF
+
+# Atomic mass units to Kilograms.
+AMU_TO_KG = 1.66053906892e-27
+
+# Electron mass to Kilograms.
+EMASS_TO_KG = 9.1093837139e-31
+
+# Atomic mass units to Electron mass.
+AMU_TO_EMASS = AMU_TO_KG / EMASS_TO_KG
+
+# Atomic units of time to Femtoseconds.
+AU_TIME_TO_FS = (HBAR_J_S / HA_J) * 1e15
+
+# Bohr radius to Angstroms.
+BOHR_TO_ANGSTROM = 5.29177210555e-1
+
+# Angstroms to Bohr radius.
+ANGSTROM_TO_BOHR = 1 / BOHR_TO_ANGSTROM

@@ -18,7 +18,7 @@ def parallel_driver_mpi(sim, seeds=None, data=None, num_tasks=None):
 
     .. rubric:: Args
     sim: Simulation
-        The simulation object containing the model, algorithm, initial state, and settings.
+        The Simulation object containing the model, algorithm, initial state, and settings.
     seeds: ndarray, optional
         An array of integer seeds for the trajectories. If None, seeds will be
         generated automatically.
