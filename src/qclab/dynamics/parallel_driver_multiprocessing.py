@@ -19,7 +19,7 @@ def parallel_driver_multiprocessing(sim, seeds=None, data=None, num_tasks=None):
 
     .. rubric:: Args
     sim: Simulation
-        The simulation object containing the model, algorithm, initial state, and settings.
+        The Simulation object containing the model, algorithm, initial state, and settings.
     seeds: ndarray, optional
         An array of integer seeds for the trajectories. If None, seeds will be
         generated automatically.
@@ -87,7 +87,7 @@ def parallel_driver_multiprocessing(sim, seeds=None, data=None, num_tasks=None):
         for n in range(num_batches)
     ]
     for i in range(num_batches):
-        # Determine the batch size from the seeds in the state object.
+        # Determine the batch size from the seeds in the State object.
         local_input_data[i][0].settings.batch_size = len(local_input_data[i][1]["seed"])
         logger.info(
             "Running batch %s with seeds %s.", i + 1, local_input_data[i][1]["seed"]

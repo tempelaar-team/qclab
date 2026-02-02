@@ -12,17 +12,17 @@ def run_dynamics(sim, state, parameters, data):
 
     .. rubric:: Args
     sim: Simulation
-        The simulation object containing the model, algorithm, and settings.
+        The Simulation object containing the model, algorithm, and settings.
     state: dict
-        The state object containing the simulation seeds.
+        The State object containing the simulation seeds.
     parameters: dict
-        The parameters object containing any additional parameters.
+        The Parameters object containing any additional parameters.
     data: Data
-        The data object for collecting output data.
+        The Data object for collecting output data.
 
     .. rubric:: Returns
     data: Data
-        The updated data object containing collected output data.
+        The updated Data object containing collected output data.
     """
     # Define an update iterator using tqdm if progress_bar is True.
     t_update_iterator = sim.settings.t_update_n
