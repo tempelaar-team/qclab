@@ -9,7 +9,7 @@ from qclab import ingredients
 
 class SpinBoson(Model):
     """
-    Spin-Boson model class.
+    Spin-Boson Model class.
 
     Reference publication:
     Tempelaar & Reichman. J. Chem. Phys. 2018, 148 (10), 102309. https://doi.org/10.1063/1.5000843.

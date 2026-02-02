@@ -10,7 +10,7 @@ from qclab import functions
 
 class TullyProblemTwo(Model):
     """
-    Tully's second problem: a dual avoided crossing.
+    A Model class for Tully's second problem: a dual avoided crossing.
 
     Reference publication:
     Tully. J. Chem. Phys. 1990, 93 (2), 1061–1071. https://doi.org/10.1063/1.459170.
