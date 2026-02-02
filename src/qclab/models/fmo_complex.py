@@ -10,7 +10,7 @@ from qclab.numerical_constants import INVCM_TO_300K
 
 class FMOComplex(Model):
     """
-    A model representing the Fenna-Matthews-Olson (FMO) complex.
+    A Model class representing the Fenna-Matthews-Olson (FMO) complex.
 
     All quantities in this model are taken to be in units of kBT at 300 K.
 
@@ -29,8 +29,8 @@ class FMOComplex(Model):
         self.default_constants = {
             "kBT": 1.0,
             "mass": 1.0,
-            "l_reorg": 35.0 * INVCM_TO_300K,  # reorganization energy
-            "w_c": 106.14 * INVCM_TO_300K,  # characteristic frequency
+            "l_reorg": 35.0 * INVCM_TO_300K,  # Reorganization energy
+            "w_c": 106.14 * INVCM_TO_300K,  # Characteristic frequency
             "N": 200,
         }
         super().__init__(self.default_constants, constants)
@@ -102,7 +102,7 @@ class FMOComplex(Model):
         matrix_elements = matrix_elements - np.min(
             np.diag(matrix_elements)
         ) * np.identity(7)
-        # Finally we broadcast the array to the desired shape
+        # Finally we broadcast the array to the desired shape.
         return np.broadcast_to(matrix_elements, (batch_size, 7, 7))
 
     ingredients = [
