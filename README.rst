@@ -6,6 +6,8 @@ QC Lab: A package for quantum-classical modeling
 It offers an environment for developing physical models and QC algorithms which enables algorithms and models to be combined arbitrarily.
 QC Lab comes with a variety of already implemented models and algorithms which we hope will encourage new researchers to explore the field of quantum-classical dynamics. Users that implement their own models and algorithms will have the opportunity to contribute them to QC Lab to form a growing library of quantum-classical dynamics tools.
 
+As of QC Lab v1.1.0, QC Lab comes with the ability to simulate on-the-fly ab initio nonadiabatic dynamics. 
+
 
 **QC Lab** is developed and maintained by the Tempelaar Team in the Chemistry Department of Northwestern University in Evanston, Illinois, USA.
 
@@ -24,6 +26,8 @@ The following algorithms are implemented making use of the complex-classical coo
 
 * Mean-field (Ehrenfest) dynamics [2]
 * Fewest-switches surface hopping (FSSH) dynamics [3]
+* Ab Initio Mean-Field dynamics
+* Ab Initio FSSH dynamics
 
 Model Systems
 `````````````
@@ -32,6 +36,7 @@ Model Systems
 * Holstein lattice model [5]
 * Fenna-Matthews-Olson (FMO) complex [6, 7]
 * Tully problems I, II, & III [8]
+* Atomistic Ab Initio model
 
 
 Installing QC Lab
@@ -41,7 +46,7 @@ QC Lab can be installed from the Python Package Index (PyPI) by executing::
 
    pip install qclab
 
-To install QC Lab without h5py or numba support, execute::
+To install QC Lab without h5py, numba, or ASE support, execute::
 
    pip install qclab --no-deps
    pip install numpy tqdm
