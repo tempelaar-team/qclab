@@ -61,3 +61,9 @@ AMU_TO_EMASS = AMU_TO_KG / EMASS_TO_KG
 
 # Atomic units of time to Femtoseconds.
 AU_TIME_TO_FS = (HBAR_J_S / HA_J) * 1e15
+
+# Bohr radius to Angstroms.
+BOHR_TO_ANGSTROM = 5.29177210555e-1
+
+# Angstroms to Bohr radius.
+ANGSTROM_TO_BOHR = 1 / BOHR_TO_ANGSTROM
