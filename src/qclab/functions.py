@@ -365,7 +365,7 @@ def vectorize_ingredient(ingredient):
         keys = kwargs.keys()
         kwargs_list = []
         for n in range(batch_size):
-            kwargs_n = {}
+            kwargs_n = {"traj_ind": n}
             for key in keys:
                 if isinstance(kwargs[key], np.ndarray):
                     kwargs_n[key] = kwargs[key][n]
@@ -731,8 +731,8 @@ def calc_resc_dir_z_fssh(
         max_pos = np.argmax(np.abs(dkj_zc))
         dkj_zc_max = dkj_zc[max_pos]
         dkj_z_max = dkj_z[max_pos]
-        # Calculate the fraction of error in the real and imaginary parts.
-        # i.e. the deviation from dkj_zc = dkj_z*.
+        # Calculate the fraction of error in the real and imaginary parts,
+        # i.e., the deviation from dkj_zc = dkj_z*.
         alignment_error = np.abs(dkj_zc_max - np.conj(dkj_z_max)) / np.abs(dkj_zc_max)
         if alignment_error > numerical_constants.GAUGE_FIX_THRESHOLD:
             logger.warning(
