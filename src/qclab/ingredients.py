@@ -3,7 +3,13 @@ This module contains ingredients for use in Model classes.
 """
 
 import numpy as np
+import copy
 from qclab import functions
+from qclab import numerical_constants
+from qclab.utils import DISABLE_ASE
+
+if not (DISABLE_ASE):
+    from qclab.interfaces import QCLabQChemInterface
 
 
 def h_c_harmonic(model, parameters, **kwargs):
@@ -306,7 +312,7 @@ def hop_harmonic(model, parameters, **kwargs):
     a_const = 0.25 * (((w**2) / h) - h)
     b_const = 0.25 * (((w**2) / h) + h)
     # Here, akj_z, bkj_z, ckj_z are the coefficients of the quadratic equation
-    # akj_z * gamma^2 - bkj_z * gamma + ckj_z = 0
+    # akj_z * gamma^2 - bkj_z * gamma + ckj_z = 0.
     akj_z = np.sum(
         2.0 * resc_dir_zc * resc_dir_z * b_const
         - a_const * (resc_dir_z**2 + resc_dir_zc**2)
@@ -372,7 +378,7 @@ def hop_free(model, parameters, **kwargs):
     eigval_diff = kwargs["eigval_diff"]
     h = model.constants.classical_coordinate_weight
     # Here, akj_z, bkj_z, ckj_z are the coefficients of the quadratic equation
-    # akj_z * gamma^2 - bkj_z * gamma + ckj_z = 0
+    # akj_z * gamma^2 - bkj_z * gamma + ckj_z = 0.
     f = 1j * 2.0 * resc_dir_z.real
     g = -2.0j * z.imag
     akj_z = np.sum(0.25 * h * f * f)
@@ -628,3 +634,67 @@ def gauge_field_force_zero(model, parameters, **kwargs):
     z = kwargs["z"]
     state_ind = kwargs["state_ind"]
     return np.zeros_like(z)
+
+
+@functions.vectorize_ingredient
+def ab_initio_property_calculator_qchem(model, parameters, **kwargs):
+    property_dict = kwargs["property_dict"]
+    traj_ind = kwargs["traj_ind"]
+    properties = {}
+    num_classical_coordinates = model.constants.num_classical_coordinates
+    num_quantum_states = model.constants.num_quantum_states
+    m = model.constants.classical_coordinate_mass
+    h = model.constants.classical_coordinate_weight
+    atom_names = model.constants.atom_names
+    atom_masses = model.constants.atom_masses
+    atom_positions = model.constants.atom_positions
+    qchem_dft_args = model.constants.calculator_args["qchem_dft_args"]
+    qchem_tddft_args = model.constants.calculator_args["qchem_tddft_args"]
+    file_label = str(parameters["seed"][traj_ind])
+
+    new_property_dict = copy.deepcopy(property_dict)
+    for property in property_dict.keys():
+        property_args = copy.deepcopy(property_dict[property])
+        for arg_key in property_args.keys():
+            if type(property_args[arg_key]) is np.ndarray:
+                property_args[arg_key] = property_args[arg_key][traj_ind]
+        if not (property_args["z"] is None):
+            # Update nuclear configuration if z is provided.
+            z = property_args["z"]
+            q = functions.z_to_q(z, m, h)
+            atom_positions = q.reshape((num_classical_coordinates // 3, 3))
+        if property == "wf_overlaps":
+            z_previous = property_args["z_previous"]
+            q_previous = functions.z_to_q(z_previous, m, h)
+            atom_positions_previous = q_previous.reshape(
+                (num_classical_coordinates // 3, 3)
+            )
+            property_args["atom_positions_previous"] = atom_positions_previous
+        new_property_dict[property] = property_args
+    calc = QCLabQChemInterface(
+        atom_positions=atom_positions,
+        atom_masses=atom_masses,
+        atom_names=atom_names,
+        label="qchem_job_" + file_label,
+        folder_scratch="qclab_job_" + file_label,
+        **{**qchem_dft_args, **qchem_tddft_args},
+    )
+    calc.write_input(**new_property_dict)
+    calc.execute()
+    calc.read_results(**new_property_dict)
+    properties = copy.deepcopy(calc.results)
+    if "gradient" in properties.keys():
+        state_inds_gradient = property_args.get("state_inds_gradient", None)
+        if isinstance(state_inds_gradient, (int, np.integer)):
+            state_inds_gradient = [state_inds_gradient]
+        if state_inds_gradient is None:
+            state_inds_gradient = np.arange(num_quantum_states, dtype=int)
+        gradient = np.zeros((num_classical_coordinates // 3, 3, num_quantum_states))
+        if state_inds_gradient is None:
+            state_inds_gradient = np.arange(num_quantum_states, dtype=int)
+        ind = 0
+        for state_ind in state_inds_gradient:
+            gradient[:, :, state_ind] = calc.results["gradient"][:, :, ind]
+            ind += 1
+        properties["gradient"] = gradient
+    return properties
