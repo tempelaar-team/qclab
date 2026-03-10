@@ -12,7 +12,10 @@ from qclab.functions import (
     dqdp_to_dzc,
 )
 from qclab.model import Model, Constants
-from qclab import ingredients, numerical_constants
+from qclab import ingredients
+from qclab.numerical_constants import (
+    ANGSTROM_TO_BOHR,
+)
 import copy
 
 
@@ -27,15 +30,15 @@ class AbInitio(Model):
         if constants is None:
             constants = {}
         self.default_constants = {
-            "atom_positions": None, # In units of Bohr.
-            "atom_masses":None, # In units of electron mass.
-            "atom_names":None,
+            "atom_positions": None,  # In units of Bohr.
+            "atom_masses": None,  # In units of electron mass.
+            "atom_names": None,
             "calculator_args": {},
             "num_quantum_states": None,
-            "normal_mode": None, # Unitless and normalilzed.
-            "harmonic_frequency": None, # In units of Hartrees.
-            "energy_offset": 0, # In units of Hartrees.
-            "kBT": 0.00095, # In units of Hartrees.
+            "normal_mode": None,  # Unitless and normalilzed.
+            "harmonic_frequency": None,  # In units of Hartrees.
+            "energy_offset": 0,  # In units of Hartrees.
+            "kBT": 0.00095,  # In units of Hartrees.
         }
         self.update_dh_qc_dzc = True
         self.update_h_q = False
@@ -58,9 +61,10 @@ class AbInitio(Model):
         normal_modes = self.constants.normal_mode
         constants_original = copy.deepcopy(self.constants)
         self.constants = Constants()
+        # Set number of coordinates to number of normal modes.
         self.constants.num_classical_coordinates = len(
             constants_original.harmonic_frequency
-        )  # Set to number of normal modes.
+        )
         self.constants.classical_coordinate_mass = np.ones(
             self.constants.num_classical_coordinates
         )
@@ -139,7 +143,7 @@ class AbInitio(Model):
                     - self.constants.energy_offset
                 )
             else:
-                raise NameError("The ab_initio_property_calculator ingredient must be provided.")
+                raise NameError("ab_initio_property_calculator must be provided")
         return np.diag(diag_h_qc)
 
     @make_ingredient_sparse
@@ -193,7 +197,7 @@ class AbInitio(Model):
                         h,
                     )
             else:
-                raise NameError("The ab_initio_property_calculator ingredient must be provided.")
+                raise NameError("ab_initio_property_calculator must be provided")
         return out
 
     @vectorize_ingredient
@@ -213,11 +217,12 @@ class AbInitio(Model):
             properties = parameters["ab_initio_property"][traj_ind]
             if "derivative_coupling" in properties.keys():
                 derivative_coupling_dq = properties["derivative_coupling"]
-                for key, val in derivative_coupling_dq.items():
-                    out[:, key[0], key[1]] = (
-                        dqdp_to_dzc(val.flatten(), None, m, h) / numerical_constants.ANGSTROM_TO_BOHR
-                    )  # Convert from 1/Angstrom to 1/Bohr.
-                    out[:, key[1], key[0]] = -np.conj(out[:, key[0], key[1]])
+                if not (derivative_coupling_dq is None):
+                    for key, val in derivative_coupling_dq.items():
+                        out[:, key[0], key[1]] = (
+                            dqdp_to_dzc(val.flatten(), None, m, h) / ANGSTROM_TO_BOHR
+                        )  # Convert from 1/Angstrom to 1/Bohr.
+                        out[:, key[1], key[0]] = -np.conj(out[:, key[0], key[1]])
                 needs_derivative_coupling = False
             else:
                 needs_derivative_coupling = True
@@ -241,11 +246,11 @@ class AbInitio(Model):
                 derivative_coupling_dq = properties["derivative_coupling"]
                 for key, val in derivative_coupling_dq.items():
                     out[:, key[0], key[1]] = (
-                        dqdp_to_dzc(val.flatten(), None, m, h) / numerical_constants.ANGSTROM_TO_BOHR
+                        dqdp_to_dzc(val.flatten(), None, m, h) / ANGSTROM_TO_BOHR
                     )  # Convert from 1/Angstrom to 1/Bohr.
                     out[:, key[1], key[0]] = -np.conj(out[:, key[0], key[1]])
             else:
-                raise NameError("The ab_initio_property_calculator ingredient must be provided.")
+                raise NameError("ab_initio_property_calculator must be provided")
         return out
 
     ingredients = [

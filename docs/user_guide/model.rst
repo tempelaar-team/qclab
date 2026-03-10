@@ -4,24 +4,41 @@
 Models
 ==========================
 
-Models in QC Lab define the physics of the quantum-classical system under study. A model object is an instance of the ``qclab.Model`` class and is equipped with a set of constants and ingredients that specify the properties of the system in a manner that is agnostic to the quantum-classical algorithm being used.
+Models in QC Lab define the physics of the quantum-classical system under study. A Model object is an instance of the ``qclab.Model`` class and is equipped with a set of constants and ingredients that specify the properties of the system in a manner that is agnostic to the quantum-classical algorithm being used.
 
-At a minimum, the model object defines the Hamiltonian of the system:
+
+The Model object contains a mandatory set of constants that define properties of the system:
+
+- ``num_quantum_states``: the number of quantum states in the system,
+- ``num_classical_coordinates``: the number of classical coordinates in the system,
+- ``classical_coordinate_mass``: the mass of the classical coordinates,
+- ``classical_coordinate_weight``: the weight of the classical coordinates (:math:`h` in the :ref:`complex-coordinate formalism <coordinates>`).
+
+
+At a minimum, the Model object contains ingredients that define the Hamiltonian of the system. QC Lab accommodates models defined in either a diabatic 
+(i.e. independent of the classical coordinates) or adiabatic basis. The Hamiltonian is given by three terms,
 
 .. math::
 
     H(q,p) = \hat{H}_{\mathrm{q}} + \hat{H}_{\mathrm{q-c}}(q) + H_{\mathrm{c}}(q,p)
 
 where :math:`\hat{H}_\mathrm{q}` is the quantum Hamiltonian, :math:`\hat{H}_{\mathrm{q-c}}(q)` is the quantum-classical coupling Hamiltonian, and :math:`H_{\mathrm{c}}(q,p)` is the classical Hamiltonian. These ingredients are discussed in detail in 
-:ref:`Ingredients <ingredient>`.
+:ref:`Ingredients <ingredient>`. Within a diabaic basis, no other information is required to specify the model.
 
+Adiabatic Basis
+---------------
 
-The model object also contains a mandatory set of constants that define properties of the system:
+Within an adiabatic basis the Hamiltonian likewise consists of the same three terms of the quantum-classical Hamiltonian (where now the coordinate dependent adiabatic
+potential energies are included in :math:`\hat{H}_{\mathrm{q-c}}(q)`) and a derivative coupling tensor that describes the rotation of the adiabatic basis with respect 
+to the classical coordinate. This tensor is given by
 
-- ``num_quantum_states``: the number of quantum states in the system,
-- ``num_classical_coordinates``: the number of classical coordinates in the system,
-- ``classical_coordinate_mass``: the mass of the classical coordinates,
-- ``classical_coordinate_weight``: the weight of the classical coordinates (:math:`h` in the complex-coordinate formalism).
+.. math::
+
+    d^{n}_{ij}(q) = \langle i(q)\vert \partial_{n}\vert j(q)\rangle
+
+where :math:`\vert i(q)\rangle` and :math:`\vert j(q)\rangle` are adiabatic states and :math:`\partial_{n}` is the partial derivative with respect to :math:`q_{n}`.
+The most obvious scenario where an adiabatic basis is required is for ab initio models where there is no global diabatic basis. Such a model is implemented in 
+the ``qclab.models.AbInitio`` module. 
 
 
 The Model Class
@@ -158,7 +175,7 @@ To initialize the model's constants manually one can run
 
     model.initialize_constants()
 
-which will execute all the ingredients in the list that begin with an underscore. After doing so, all the internal constants will be available in the model's constants object ``model.constants``. By default, this is done whenever a model object is initialized and whenever a constant is changed.
+which will execute all the ingredients in the list that begin with an underscore. After doing so, all the internal constants will be available in the model's constants object ``model.constants``. By default, this is done whenever a Model object is initialized and whenever a constant is changed.
 
 
 Importantly, a model's ingredients list is executed from back to front. This means that one can add or overwrite an existing ingredient by appending a new tuple to the ingredients list. For example, if we wanted to change the quantum-classical coupling from diagonal to off-diagonal coupling, we could define a new ingredient and append it to the ingredients list:

@@ -15,4 +15,5 @@ User Guide
     simulation
     driver
     data
+    coordinates
     cite

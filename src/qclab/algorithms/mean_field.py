@@ -85,6 +85,7 @@ class MeanFieldAbInitio(Algorithm):
             settings = {}
         self.default_settings = {
             "update_wf_adb_eig_num_substeps": 10,
+            "use_wf_overlaps_for_adb_connection": False,
         }
         super().__init__(self.default_settings, settings)
 
@@ -109,33 +110,13 @@ class MeanFieldAbInitio(Algorithm):
         tasks.update_derivative_coupling_dzc,
         partial(tasks.update_quantum_classical_force, wf_db_name="wf_adb"),
         tasks.update_adb_connection,
-        partial(
-            tasks.copy_in_state,
-            copy_name="wf_overlaps_adb_connection",
-            orig_name="adb_connection",
-        ),
     ]
 
     update_recipe = [
         partial(
             tasks.copy_in_state,
-            copy_name="ab_initio_property_previous",
-            orig_name="ab_initio_property",
-        ),
-        partial(
-            tasks.copy_in_state,
             copy_name="aip_excited_amplitudes_previous",
             orig_name="aip_excited_amplitudes",
-        ),
-        partial(
-            tasks.copy_in_state,
-            copy_name="wf_overlaps_adb_connection_previous",
-            orig_name="wf_overlaps_adb_connection",
-        ),
-        partial(
-            tasks.copy_in_state,
-            copy_name="derivative_coupling_dzc_previous",
-            orig_name="derivative_coupling_dzc",
         ),
         partial(
             tasks.copy_in_state,
@@ -152,11 +133,6 @@ class MeanFieldAbInitio(Algorithm):
             tasks.copy_in_state,
             copy_name="classical_force_previous",
             orig_name="classical_force",
-        ),
-        partial(
-            tasks.copy_in_state,
-            copy_name="dh_qc_dzc_previous",
-            orig_name="dh_qc_dzc",
         ),
         partial(
             tasks.copy_in_state,
@@ -184,7 +160,7 @@ class MeanFieldAbInitio(Algorithm):
         tasks.update_derivative_coupling_dzc,
         tasks.update_derivative_coupling_dzc_gauge,
         tasks.update_wf_overlaps_gauge,
-        tasks.update_adb_connection,
+        partial(tasks.update_adb_connection, update_derivative_coupling=False),
         tasks.update_h_q_tot,
         partial(
             tasks.update_quantum_classical_force,
@@ -204,7 +180,7 @@ class MeanFieldAbInitio(Algorithm):
         partial(tasks.update_quantum_energy_wf, wf_db_name="wf_adb"),
         tasks.update_classical_energy,
         tasks.collect_t,
-        tasks.collect_dm_db,
+        partial(tasks.collect_dm_db, dm_db_name="dm_db", dm_db_output_name="dm_adb"),
         tasks.collect_classical_energy,
         tasks.collect_quantum_energy,
     ]

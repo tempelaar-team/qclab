@@ -5,20 +5,20 @@ Drivers
 ==========================
 
 
-QC Lab comes equipped with three dynamics drivers. These are functions that take a simulation object (see :ref:`Simulations <simulation>`) as input and carry out the dynamics by executing the recipes of the algorithm object (see :ref:`Algorithms <algorithm>`) associated with the simulation. The three drivers are:
+QC Lab comes equipped with three dynamics drivers. These are functions that take a Simulation object (see :ref:`Simulations <simulation>`) as input and carry out the dynamics by executing the recipes of the Algorithm object (see :ref:`Algorithms <algorithm>`) associated with the simulation. The three drivers are:
 
 - ``serial_driver``: a serial driver that runs the simulation on a single CPU core,
 - ``multiprocessing_driver``: a parallel driver that uses Python's built-in ``multiprocessing`` module to run the simulation on multiple CPU cores,
 - ``mpi_driver``: a parallel driver that uses the ``mpi4py`` package to run the simulation on multiple CPU cores, possibly across multiple nodes.
 
-Each driver is responsible for managing the execution of the simulation, including dividing the total number of trajectories into batches (if necessary), distributing the batches across available CPU cores, and collecting the results into a single output data object. 
+Each driver is responsible for managing the execution of the simulation, including dividing the total number of trajectories into batches (if necessary), distributing the batches across available CPU cores, and collecting the results into a single output Data object. 
 
 All drivers in QC Lab accept the following input arguments (parallel drivers accept an additional argument, see below):
 
 - ``sim``: an instance of the ``qclab.Simulation`` class containing the model, algorithm, and settings for the simulation,
 - ``seeds``: an optional array of integers specifying the random seeds for each trajectory in
     the simulation. If not provided, the seeds will be generated automatically.
-- ``data``: an input data object into which the results of the simulation will be added. If not provided, a new data object will be created.
+- ``data``: an input Data object into which the results of the simulation will be added. If not provided, a new Data object will be created.
 
 Generically, a driver is called as:
 
@@ -38,7 +38,7 @@ The serial driver runs batches of trajectories sequentially without without requ
 Parallel Drivers
 --------------------------
 
-The parallel drivers use multiple CPU cores to run batches of trajectories concurrently. This can significantly speed up the simulation, especially for large numbers of trajectories. It is important to recognize that the ``sim.settings.batch_size`` now refers to the number of trajectories that will run on a single CPU core at a time. If you have ``N`` CPU cores available and a batch size of ``B``, then up to ``N*B`` trajectories will be simulated concurrently. Having a ``sim.settings.num_trajs = (N+1)*B`` will have an unecessary overhead since the last ``B`` trajectories will not be able to run concurrently. For that reason it is recommended to set ``sim.settings.num_trajs`` to be a multiple of ``N*B``.
+The parallel drivers use multiple CPU cores to run batches of trajectories concurrently. This can significantly speed up the simulation, especially for large numbers of trajectories. It is important to recognize that the ``sim.settings.batch_size`` now refers to the number of trajectories that will run on a single CPU core at a time. If you have ``N`` CPU cores available and a batch size of ``B``, then up to ``N*B`` trajectories will be simulated concurrently. Having a ``sim.settings.num_trajs = (N+1)*B`` will have an unnecessary overhead since the last ``B`` trajectories will not be able to run concurrently. For that reason it is recommended to set ``sim.settings.num_trajs`` to be a multiple of ``N*B``.
 
 In addition to the arguments described above, the parallel drivers accept ``ntasks``, an integer specifying the number of parallel tasks to use. If ``ntasks`` is not provided, the parallel drivers will attempt to use each available CPU core as a separate task.
 

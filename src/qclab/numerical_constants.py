@@ -1,5 +1,41 @@
 """
 This module contains numerical constants.
+"""
+
+# Numerical threshold for near zero values.
+SMALL = 1e-10
+
+# Numerical threshold for nonadiabatic coupling gauge fixing.
+# The misalignment is allowed to be 1e-3 of the magnitude of the coupling.
+GAUGE_FIX_THRESHOLD = 1e-3
+
+# Finite difference step size.
+FINITE_DIFFERENCE_DELTA = 1e-6
+
+# Conversion factor from electronvolts to wavenumbers.
+EV_TO_INVCM = 8065.610420
+
+# Conversion factor from Hartrees to electronvolts.
+HA_TO_EV = 27.21138625
+
+# Conversion factor from eV to Hartrees.
+EV_TO_HA = 1 / HA_TO_EV
+
+# Conversion factor from wavenumbers to Hartrees.
+INVCM_TO_HA = (1 / EV_TO_INVCM) * EV_TO_HA
+
+# Conversion factor from Angstroms to Bohr.
+ANGSTROM_TO_BOHR = 1.8897259886
+
+# Conversion factor from atomic mass units to electron mass.
+AMU_TO_EMASS = 1822.89
+
+# Conversion factor from atomic units of time to femtoseconds.
+AU_TIME_TO_FS = 0.02419
+
+
+"""
+This module contains numerical constants.
 
 Values for physical constants are taken from 2022 CODATA recommended values.
 Reference publication:
@@ -20,15 +56,10 @@ FINITE_DIFFERENCE_DELTA = 1e-6
 
 # Speed of light [m/s].
 C_M_PER_S = 299792458
-
 # Planck constant [J * s].
 H_J_S = 6.62607015e-34
-
 # Boltzmann constant [J/K].
 K_B_J_PER_K = 1.380649e-23
-
-# Hartree energy in Joules.
-HA_J = 4.3597447222060e-18
 
 # Reduced Planck constant [J·s].
 HBAR_J_S = H_J_S / (2 * np.pi)
@@ -49,21 +80,3 @@ INVCM_TO_KBT_REF = 100 * HC_J_M / KBT_REF_J
 
 # Alias to old name for backwards-compatibility.
 INVCM_TO_300K = INVCM_TO_KBT_REF
-
-# Atomic mass units to Kilograms.
-AMU_TO_KG = 1.66053906892e-27
-
-# Electron mass to Kilograms.
-EMASS_TO_KG = 9.1093837139e-31
-
-# Atomic mass units to Electron mass.
-AMU_TO_EMASS = AMU_TO_KG / EMASS_TO_KG
-
-# Atomic units of time to Femtoseconds.
-AU_TIME_TO_FS = (HBAR_J_S / HA_J) * 1e15
-
-# Bohr radius to Angstroms.
-BOHR_TO_ANGSTROM = 5.29177210555e-1
-
-# Angstroms to Bohr radius.
-ANGSTROM_TO_BOHR = 1 / BOHR_TO_ANGSTROM

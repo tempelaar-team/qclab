@@ -25,10 +25,10 @@ This is what the final code looks like:
         """
         # Get the indices of trajectories that were frustrated
         # (i.e., did not successfully hop but were eligible to hop).
-        frustrated_indices = state.hop_ind[~state.hop_successful]
-        # Reverse the velocities for these indices, in the complex classical coordinate 
+        frustrated_indices = state["hop_ind"][~state["hop_successful"]]
+        # Reverse the velocities for these indices, in the complex classical coordinate
         # formalism, this means conjugating the z coordinate.
-        state.z[frustrated_indices] = state.z[frustrated_indices].conj()
+        state["z"][frustrated_indices] = state["z"][frustrated_indices].conj()
         return state, parameters
 
     @vectorize_ingredient
@@ -49,9 +49,9 @@ This is what the final code looks like:
         h_qc[1, 0] = np.conj(h_qc[0, 1])
         return h_qc
 
-    # Initialize the simulation object.
+    # Initialize the Simulation object.
     sim = Simulation()
-    # Equip it with a spin-boson model object.
+    # Equip it with a spin-boson Model object.
     sim.model = SpinBoson()
     # Change the reorganization energy.
     sim.model.constants.l_reorg = 0.05
@@ -79,13 +79,6 @@ This is what the final code looks like:
     plt.xlabel('Time [arb. units]')
     plt.ylabel('Excited state population')
     plt.ylim([0.4,1.01])
-    plt.legend(frameon=False)
     plt.savefig("full_code_output.png")
     plt.show()
 
-
-
-.. image:: full_code_output.png
-    :alt: Population dynamics.
-    :align: center
-    :width: 50%
