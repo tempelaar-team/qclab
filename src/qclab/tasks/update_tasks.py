@@ -316,7 +316,11 @@ def update_derivative_coupling_dzc(
     """
     Updates the derivative coupling matrix.
 
-    d^{i}_{\\alpha,\\beta} = \\langle\\alpha(z)\\vert\\partial_{z_{i}^{*}}\\vert\\beta(z)\\rangle
+    .. math::
+
+        d^{i}_{\\alpha,\\beta} = \\langle\\alpha(z)\\vert\\partial_{z_{i}^{*}}\\vert\\beta(z)\\rangle
+
+    Raises
 
     Optional Keyword Arguments
     --------------------------
@@ -386,7 +390,7 @@ def update_quantum_classical_force(
     If the model has a ``gauge_field_force`` ingredient, this term will be added
     to the quantum-classical force.
 
-    If the model has a ``derivative_coupling_dzc`` ingredient, this conribution will
+    If the model has a ``derivative_coupling_dzc`` ingredient, this contribution will
     be added to the quantum-classical force.
 
     Optional Keyword Arguments
@@ -1025,16 +1029,21 @@ def update_hop_inds_fssh(
     sim: Simulation,
     state: dict,
     parameters: dict,
+    act_surf_ind_name: str = "act_surf_ind",
     hop_prob_name: str = "hop_prob",
     hop_prob_rand_vals_name: str = "hop_prob_rand_vals",
     hop_ind_name: str = "hop_ind",
     hop_dest_name: str = "hop_dest",
+    hop_bool_name: str = "hop_bool",
+    hop_pairs_name: str = "hop_pairs",
 ):
     """
     Updates indices of trajectories that hop according to their probabilities (but may later be frustrated) and their destination state indices.
 
     Optional Keyword Arguments
     --------------------------
+    act_surf_ind_name:
+        Name of the active surface in the State object.
     hop_prob_name:
         Name of the hopping probabilities in the State object.
     hop_prob_rand_vals_name:
@@ -1043,6 +1052,9 @@ def update_hop_inds_fssh(
         Name under which to store the indices of the hopping trajectories in the State object.
     hop_dest_name:
         Name under which to store the destination indices of the hopping trajectories in the State object.
+    hop_pairs_name:
+        Name under which to store the pairs of initial and final indices of hopping trajectories in the
+        State object.
 
     Constants and Settings
     ----------------------
@@ -1051,6 +1063,8 @@ def update_hop_inds_fssh(
 
     Reads
     -----
+    state[act_surf_ind_name]: ndarray of shape (B,) dtype=int
+        Active surface indices.
     state[hop_prob_name]: ndarray of shape (B, N), dtype=float64
         Hopping probabilities between the active surface and all other surfaces.
     state[hop_prob_rand_vals_name]: ndarray of shape (B//b, t), dtype=float64
@@ -1058,13 +1072,18 @@ def update_hop_inds_fssh(
 
     Writes
     ------
-    state[hop_ind_name]: ndarray of shape (B,), dtype=int
+    state[hop_ind_name]: ndarray of shape (H,), dtype=int
         Indices of trajectories that hop.
-    state[hop_dest_name]: ndarray of shape (B,), dtype=int
+    state[hop_dest_name]: ndarray of shape (H,), dtype=int
         Destination surface for each hop.
+    state[hop_bool_name]: ndarray of shape (B,), dtype=bool
+        Boolean indicating if the trajectory hops.
+    state[hop_paris_name]: ndarray of shape (B, 2), dtype=int
+        Indices of initial/final states of hops. Zero for trajectories that don't hop.
 
     Notes
     -----
+    * H = The number of trajectories that hop.
     * B = sim.settings.batch_size
     * b = sim.model.constants.num_quantum_states if fssh_deterministic == True, b = 1 otherwise.
     * t = The number of update timesteps.
@@ -1084,14 +1103,20 @@ def update_hop_inds_fssh(
         axis=1,
     )
     rand_branch = (rand[:, np.newaxis] * np.ones((num_trajs, num_branches))).flatten()
-    hop_ind = np.where(
+    hop_bool = (
         np.sum((cumulative_probs > rand_branch[:, np.newaxis]).astype(int), axis=1) > 0
-    )[0]
+    )
+    hop_ind = np.where(hop_bool == True)[0]
     hop_dest = np.argmax(
         (cumulative_probs > rand_branch[:, np.newaxis]).astype(int), axis=1
     )[hop_ind]
     state[hop_ind_name] = hop_ind
     state[hop_dest_name] = hop_dest
+    state[hop_bool_name] = hop_bool
+    hop_pairs = np.zeros((sim.settings.batch_size, 2), dtype=int)
+    hop_pairs[hop_ind, 0] = state[act_surf_ind_name][hop_ind]
+    hop_pairs[hop_ind, 1] = hop_dest
+    state[hop_pairs_name] = hop_pairs
     return state, parameters
 
 
@@ -1126,7 +1151,7 @@ def update_z_shift_fssh(
     Ingredients
     -----------
     hop: optional, default: ``functions.numerical_fssh_hop``
-        Hopping ingredient that determines the energy conservation critereon for a given classical Hamiltonian.
+        Hopping ingredient that determines the energy conservation criterion for a given classical Hamiltonian.
 
     Reads
     -----
@@ -2071,22 +2096,22 @@ def update_adb_connection(
     sim: Simulation,
     state: dict,
     parameters: dict,
-    eigvecs_adb_previous_name: str = "eigvecs_adb_previous",
-    h_q_tot_adb_name: str = "h_q_tot_adb",
+    z_name: str = "z",
     adb_connection_name: str = "adb_connection",
     classical_force_name: str = "classical_force",
     quantum_classical_force_name: str = "quantum_classical_force",
     derivative_coupling_dzc_name: str = "derivative_coupling_dzc",
-    use_wf_overlaps: bool = False,
     wf_overlaps_name: str = "aip_wf_overlaps",
+    update_derivative_coupling: bool = False,
 ):
     """
-    Updates the Adiabatic Connection matrix.
+    Updates the adiabatic connection matrix.
+
 
     This matrix describes the coupling between different adiabatic states.
 
     .. math::
-    
+
         A = U^{\\dagger}\\partial_{t}U = B - B^{\\dagger}
 
     where
@@ -2097,23 +2122,31 @@ def update_adb_connection(
 
     and :math:`U` is a matrix of adiabatic states (column vectors).
 
+    Updates the derivative coupling if needed.
+
     Optional Keyword Arguments
     --------------------------
-    eigvecs_adb_previous_name:
-        Name of the adiabatic eigenvectors from the previous time step in the State object.
-    h_q_tot_adb_name:
-        Name of the total Hamiltonian of the quantum subsystem in the adiabatic basis
-        in the State object.
-    adb_connection_name:
-        Name under which to store the adiabatic connection in the State object.
     z_name:
         Name of classical coordinates in the State object.
+    adb_connection_name:
+        Name under which to store the adiabatic connection in the State object.
     classical_force_name:
         Name of the classical force in the State object.
     quantum_classical_force_name:
         Name of the quantum-classical force in the State object.
     derivative_coupling_dzc_name:
         Name of the derivative coupling tensor in the State object.
+    use_wf_overlaps:
+        Boolean indicating if the wavefunction overlaps should be used to construct
+        the adiabatic connection.
+    wf_overlaps_name:
+        Name of the wavefunction overlaps in the State object.
+
+    Constants and Settings
+    ----------------------
+    sim.algorithm.settings.use_wf_overlaps_for_adb_connection: bool, default: False
+        If True, uses a finite difference formula to construct the adiabatic connection
+        from wavefunction overlaps. If False, uses the derivative coupling.
 
     Ingredients
     -----------
@@ -2126,6 +2159,8 @@ def update_adb_connection(
     -----
     state[z_name]: ndarray of shape (B, C), dtype=complex128
         Complex-valued classical coordinates.
+    state[wf_overlaps_name]: ndarray of shape (B, N, N), dtype=float64
+        Wavefunction overlaps.
 
     Writes
     ------
@@ -2138,7 +2173,13 @@ def update_adb_connection(
     * N = sim.model.constants.num_quantum_states
     * C = sim.model.constants.num_classical_coordinates
     """
+
+    use_wf_overlaps = sim.algorithm.settings.use_wf_overlaps_for_adb_connection
+
     if wf_overlaps_name in state.keys() and use_wf_overlaps:
+        state, parameters = update_wf_overlaps_gauge(
+            sim, state, parameters, wf_overlaps_name=wf_overlaps_name
+        )
         A = state[wf_overlaps_name]
         state[adb_connection_name] = (1 / (2 * sim.settings.dt_update)) * (
             A - np.transpose(A, axes=(0, 2, 1))
@@ -2147,13 +2188,29 @@ def update_adb_connection(
         dz_dt = -1j * (
             state[classical_force_name] + state[quantum_classical_force_name]
         )
+        need_derivative_coupling = True
         if derivative_coupling_dzc_name in state:
             derivative_coupling_dzc = state[derivative_coupling_dzc_name]
-        else:
-            raise AttributeError(
-                "The state object needs the derivative coupling as: "
-                + derivative_coupling_dzc_name
+            need_derivative_coupling = False
+        if update_derivative_coupling or need_derivative_coupling:
+            state, parameters = update_derivative_coupling_dzc(
+                sim,
+                state,
+                parameters,
+                z_name=z_name,
+                derivative_coupling_dzc_name=derivative_coupling_dzc_name,
             )
+            state, parameters = update_derivative_coupling_dzc_gauge(
+                sim,
+                state,
+                parameters,
+                wf_overlaps_name=wf_overlaps_name,
+                derivative_coupling_dzc_name=derivative_coupling_dzc_name,
+            )
+            state, parameters = update_wf_overlaps_gauge(
+                sim, state, parameters, wf_overlaps_name=wf_overlaps_name
+            )
+            derivative_coupling_dzc = state[derivative_coupling_dzc_name]
         B = np.sum(
             np.conj(dz_dt)[:, :, np.newaxis, np.newaxis] * derivative_coupling_dzc,
             axis=1,
@@ -2235,25 +2292,29 @@ def update_wf_adb_hop_prob(
 
     Optionally integrates the hopping probability over the time interval.
 
-    The following formulae and equation numbers are in reference to:
-    Hammes‐Schiffer, S.; Tully, J. C. Proton Transfer in Solution: Molecular Dynamics with Quantum Transitions.
-     J. Chem. Phys. 1994, 101 (6), 4657–4667. https://doi.org/10.1063/1.467455.
+    Hopping probability formula is taken from:
+
+    Hammes‐Schiffer, S.; Tully, J. C. Proton Transfer in Solution: Molecular Dynamics with Quantum Transitions. J. Chem. Phys. 1994, 101 (6), 4657–4667. https://doi.org/10.1063/1.467455.
 
     .. math::
 
-        \\begin{align*}
-        g_{k\\rightarrow j} = \\frac{\\int_{t}^{t+\\Delta} b_{jk}(t') dt'}{c^{*}_{k}(t)c_{k}(t)}\\\\
-        b_{jk}(t) = -2\\Re(c_{j}^{*}(t)c_{k}(t) A_{jk}(t))\\\\
-        A_{jk}(t) = \\dot{q}(t) \\cdot d_{jk}(t)
-        \\end{align*}
+        g_{k->j} = ( \int_{t}^{t+\Delta} b_{jk}(t') dt' ) / (c^{*}_{k}(t)c_{k}(t))
 
-    Note that this is consisten with Eq. 19-21 for real and complex :math:`d_{jk}`.
-
-    Eq. 30 is equivalent for real :math:`d_{jk}`:
-    
     .. math::
 
-        b_{jk}(t) = -2\\Re(c_{j}(t)c_{k}^{*}(t) A_{jk}(t))`
+        b_{jk}(t) = -2\Re(c_{j}^{*}(t)c_{k}(t) A_{jk}(t))
+
+    .. math::
+
+        A_{jk}(t) = \dot{q}(t) \cdot d_{jk}(t)
+
+    Note that this is consistent with Eq. 19-21 for real and complex :math:`d_{jk}`.
+
+    Eq. 30 (follwoing) is equivalent to the above expression for :math:`b_{jk}` when :math:`d_{jk}` is real-valued:
+
+    .. math::
+
+        b_{jk}(t) = -2\Re(c_{j}(t)c_{k}^{*}(t) A_{jk}(t))
 
     Optional Keyword Arguments
     --------------------------
@@ -2342,9 +2403,9 @@ def update_wf_adb_hop_prob(
                 * wf_adb[np.arange(num_trajs * num_branches), act_surf_ind][
                     :, np.newaxis
                 ]
-                * adb_connection_interp[:, :, act_surf_ind].reshape(
-                    (num_trajs * num_branches, num_quantum_states)
-                )
+                * adb_connection_interp[
+                    np.arange(num_trajs * num_branches, dtype=int), :, act_surf_ind
+                ].reshape((num_trajs * num_branches, num_quantum_states))
                 * dt_update
                 / num_substeps
             )
@@ -2371,7 +2432,7 @@ def update_q_velocity_verlet(
     quantum_classical_force_name: str = "quantum_classical_force",
 ):
     """
-    Updates the position component of the classical coordinates using Velocity Verlet.
+    Updates the position component of the classical coordinates using velocity Verlet.
 
     Optional Keyword Arguments
     --------------------------
@@ -2428,7 +2489,7 @@ def update_p_velocity_verlet(
     quantum_classical_force_previous_name: str = "quantum_classical_force_previous",
 ):
     """
-    Updates the momentum component of the classical coordinates using Velocity Verlet.
+    Updates the momentum component of the classical coordinates using velocity Verlet.
 
     Optional Keyword Arguments
     --------------------------
@@ -2600,10 +2661,10 @@ def update_ab_initio_property(
     Optional Keyword Arguments
     --------------------------
     ab_initio_property_name:
-        The name underwhich to store the ab initio properties in the State and Parameters objects.
+        The name under which to store the ab initio properties in the State and Parameters objects.
     property_dict:
-        A dictionary of properties to be calculated. The keys of the dictionary point to dictionaries of arguments.
-        The argument dictionaries point to objects in the State object, to Booleans, or to None.
+        A dictionary of properties and associated argument dictionaries, i.e. {property_name:{arg1:arg1_name,...}}.
+        The argument dictionaries contain names of objects in the State object, Booleans, or None.
 
     Ingredients
     -----------
@@ -2619,7 +2680,7 @@ def update_ab_initio_property(
         A List of dictionaries containing the ab initio properties calculated for each
         trajectory.
     state[ab_initio_property_name]: Dict
-        A dictionary containing the ab initio properties calculated restructured into a
+        A dictionary containing the calculated ab initio properties restructured into a
         ndarray where the first index corresponds to the trajectory index.
     state["aip_" + property]: ndarray of shape (B, shape(property)), dtype=type(property)
         A new variable in the State object giving the result of the calculation of property.
@@ -2632,6 +2693,7 @@ def update_ab_initio_property(
         [{} for _ in range(sim.settings.batch_size)]
     )
     state[ab_initio_property_name] = {}
+
     ab_initio_property_calculator, has_ab_intio_property_calculator = sim.model.get(
         "ab_initio_property_calculator"
     )
@@ -2647,12 +2709,13 @@ def update_ab_initio_property(
                 else:
                     args_dict[args_key] = state[args_dict[args_key]]
             new_property_dict[property_key] = args_dict
-        parameters[ab_initio_property_name] = ab_initio_property_calculator(
+        new_ab_initio_property = ab_initio_property_calculator(
             sim.model,
             parameters,
             batch_size=sim.settings.batch_size,
             property_dict=new_property_dict,
         )
+        parameters[ab_initio_property_name] = new_ab_initio_property
         new_results_dict = {}
         ab_initio_property = parameters[ab_initio_property_name]
         for key in ab_initio_property[0].keys():
@@ -2662,4 +2725,5 @@ def update_ab_initio_property(
         state[ab_initio_property_name] = new_results_dict
         for key in new_results_dict.keys():
             state["aip_" + key] = new_results_dict[key]
+
     return state, parameters

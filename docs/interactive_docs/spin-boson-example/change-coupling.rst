@@ -14,7 +14,7 @@ QC Lab's built-in vectorization decorator to automatically vectorize it.
 
 .. code-block:: python
 
-    from qclab.functions import vectorize_ingredient
+    from qclab.ingredients import vectorize_ingredient
 
     @vectorize_ingredient
     def h_qc(model, parameters, **kwargs):

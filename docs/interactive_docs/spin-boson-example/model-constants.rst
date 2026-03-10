@@ -7,7 +7,7 @@ I want to change the reorganization energy.
 
 Changing the reorganization energy is easy! 
 
-Using the same simulation object from the previous example, we can modify the ``l_reorg`` constant in ``sim.model.constants``.
+Using the same Simulation object from the previous example, we can modify the ``l_reorg`` constant in ``sim.model.constants``.
 
 
 

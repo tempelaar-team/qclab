@@ -18,8 +18,8 @@ def initialize_variable_objects(sim: Simulation, state: dict, parameters: dict):
     Populates the State object with non-private variables in ``sim.initial_state``, and an empty
     dictionary for storing output quantities.
 
-    For any non-private (i.e. not beginning with "_") ndarray in ``sim.initial_state``,
-    a new array is created in ``state`` with shape `(batch_size, *original_shape)`` where
+    For any non-private (i.e., not beginning with "_") ndarray in ``sim.initial_state``,
+    a new array is created in ``state`` with shape ``(batch_size, *original_shape)`` where
     ``original_shape`` is the shape of the array in ``sim.initial_state``.
     The new array is initialized by copying the original array into each slice along the first axis.
 
@@ -96,7 +96,7 @@ def initialize_branch_seeds(
     branch_ind_name: str = "branch_ind",
 ):
     """
-    Converts seeds into branch seeds for deterministic surface hopping.
+    Distributes random seeds over branches for deterministic surface hopping.
 
     This is done by first assuming that the number of branches is equal to the number of quantum states.
     Then, a branch index is created which gives the branch index of each seed in the batch.
@@ -168,7 +168,7 @@ def initialize_z_mcmc(
     z_name: str = "z",
 ):
     """
-    Initializes classical coordinates according to Boltzmann statistics using Markov-
+    Initializes :ref:`complex classical coordinates <coordinates>` according to Boltzmann statistics using Markov
     Chain Monte Carlo with a Metropolis-Hastings algorithm.
 
     The algorithm has two modes, separable and non-separable. In the separable

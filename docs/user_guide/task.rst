@@ -5,7 +5,7 @@ Tasks
 ==========================
 
 Tasks are functions that carry out the elementary operations of an algorithm by modifying a
-``state`` object and optionally a ``parameters`` object, which are both dictionaries.
+State object and optionally a Parameters object, which are both dictionaries.
 Built-in tasks can be found in the ``qclab.tasks`` module and are documented on this page.
 
 A generic tasks has the form:
@@ -18,11 +18,11 @@ A generic tasks has the form:
         # Carry out the task by modifying state and parameters
         return state, parameters
 
-where ``sim`` is an instance of the ``qclab.Simulation`` class (see :ref:`Simulations <simulation>`), and ``**kwargs`` are any additional keyword arguments that customize the task to the context in which it is used. Generally, keyword arguments specify
-which attributes of the ``state`` and ``parameters`` objects are to be used and/or modified by the task (e.g., the name of the wavefunction or Hamiltonian attributes). 
+where ``sim`` is an instance of the Simulation class (see :ref:`Simulations <simulation>`), and ``**kwargs`` are any additional keyword arguments that customize the task to the context in which it is used. Generally, keyword arguments specify
+which elements of the ``state`` and ``parameters`` objects are to be used and/or modified by the task (e.g., the name of the wavefunction or Hamiltonian attributes). 
 
 
-If a task has keyword arguments, they must be provided when the task is included in the algorithm's recipe (see :ref:`Algorithms <algorithm>`) by using the ``partial`` function from the ``functools`` module, as in:
+If a task is used with keyword arguments, they must be provided when the task is included in the algorithm's recipe by using the ``partial`` function from the ``functools`` module, as in:
 
 .. code-block:: python
 
@@ -51,22 +51,23 @@ Examples of these tasks are:
 .. code-block:: python
 
     def my_initialization_task(sim, state, parameters, **kwargs):
-        # Create an attribute in the state object with name "new_attribute_name".
+        # Create an attribute in the State object.
         shape = (sim.settings.num_trajs, sim.model.constants.num_quantum_states)
-        state["new_attribute_name"] = np.zeros(shape, dtype=complex)
+        state["new_attribute"] = np.zeros(shape, dtype=complex)
         return state, parameters
 
     def my_update_task(sim, state, parameters, **kwargs):
-        # Update an attribute in the state object.
-        state["new_attribute_name"] += 1j
+        # Update an attribute in the State object.
+        shape = (sim.settings.num_trajs, sim.model.constants.num_quantum_states)
+        state["new_attribute"] = state["new_attribute"] + 1j*np.ones(shape, dtype=complex)
         return state, parameters
 
     def my_collect_task(sim, state, parameters, **kwargs):
         # Collect results into the output dictionary.
-        state["output_dict"]['new_attribute_name'] = state["new_attribute_name"]
+        state["output_dict"]["new_attribute"] = state.new_attribute
         return state, parameters
 
-These tasks can then be included in the appropriate recipe of an algorithm object (see :ref:`Algorithms <algorithm>`). Notice that none of these tasks have keyword arguments and so can be included directly in recipes without using ``partial``.
+These tasks can then be included in the appropriate recipe of an Algorithm object. Notice that none of these tasks have keyword arguments and so can be included directly in recipes without using ``partial``.
 
 Built-in Tasks
 --------------------------
@@ -74,7 +75,7 @@ Built-in tasks can be found in the ``qclab.tasks`` module and are documented bel
 
 .. note::
 
-   All tasks assume that the model object has a minimal set of constants including ``num_quantum_states`` (the number of quantum states) and ``num_classical_coordinates`` (the number of classical coordinates), ``classical_coordinate_mass`` (the mass of the classical coordinates), and ``classical_coordinate_weight`` (the weight of the classical coordinates). These constants are discussed in :ref:`Models <model>`. For brevity we exclude explicit mention of these constants in the task documentation.
+   All tasks assume that the Model object has a minimal set of constants including ``num_quantum_states`` (the number of quantum states), ``num_classical_coordinates`` (the number of classical coordinates), ``classical_coordinate_mass`` (the mass of the classical coordinates), and ``classical_coordinate_weight`` (the weight of the classical coordinates). These constants are discussed in :ref:`Models <model>`. For brevity we exclude explicit mention of these constants in the task documentation.
 
 
 Initialization Tasks

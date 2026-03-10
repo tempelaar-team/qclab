@@ -4,14 +4,24 @@
 Algorithms
 ==========================
 
-Algorithms in QC Lab define the sequence of operations that evolve the system defined by the model object (see :ref:`Models <model>`) in time. They are composed of three recipes which define initialization steps, update steps, and collect steps that together define the desired algorithm. Each recipe is a list of "tasks" (see :ref:`Tasks <task>`) which are executed in the order specified by the recipe list. Algorithms define the transient quantities of an algorithm in the state object, which is an instance of a dictionary.
+Algorithms in QC Lab define the sequence of operations that evolve the system defined by the Model object (see :ref:`Models <model>`) in time.
+They are composed of three recipes which define initialization steps, update steps, and collect steps that together define the desired algorithm.
+Each recipe is a list of "tasks" (see :ref:`Tasks <task>`) which are executed in the order specified by the recipe list. 
+Algorithms define the transient quantities of an algorithm in the State object, which is an instance of a dictionary.
+
+
+Algorithms in QC Lab can are tailored to Model objects defined in adiabatic or diabatic bases (see :ref:`Models <model>`) in order to optimize their
+performance. Such tailoring breaks the compatibility between an algorithm implemented assuming a diabatic basis and those models implemented without 
+such a basis (and vice versa). As an example, the `AbInitioFewestSwitchesSurfaceHopping` and `AbInitioMeanField` algorithms can only be used with models defined 
+in an adiabatic basis. In most cases, model problems are defined in a diabatic basis and so we tailor the present adiabatic algorithms towards ab initio simulations
+which are the most common use case for an adiabatic basis.
 
 
 .. _algorithm_objects:
 Algorithm Objects
 -----------------------
 
-Algorithm objects in QC Lab are instances of the ``qclab.Algorithm`` class. Each algorithm object is composed of three recipes: an initialization recipe ``algorithm.initialization_recipe``, an update recipe ``algorithm.update_recipe``, and a collect recipe ``algorithm.collect_recipe``. Like a model object, an algorithm object has an instance of the Constants class ``algorithm.settings`` which contains the settings specific to the algorithm. Unlike the model object, algorithm objects do not have internal constants and so there is no initialization method as there is for model objects (see :ref:`Models <model>`). Instead, the settings of the algorithm object are set directly by the user during or after instantiation of the algorithm object.
+Algorithm objects in QC Lab are instances of the ``qclab.Algorithm`` class. Each Algorithm object is composed of three recipes: an initialization recipe ``algorithm.initialization_recipe``, an update recipe ``algorithm.update_recipe``, and a collect recipe ``algorithm.collect_recipe``. Like a Model object, an Algorithm object has an instance of the Constants class ``algorithm.settings`` which contains the settings specific to the algorithm. Unlike the Model object, Algorithm objects do not have internal constants and so there is no initialization method as there is for Model objects (see :ref:`Models <model>`). Instead, the settings of the Algorithm object are set directly by the user during or after instantiation of the Algorithm object.
 
 The empty Algorithm class is:
 
@@ -56,7 +66,7 @@ The empty Algorithm class is:
             return state, parameters
 
 
-After instantiating an algorithm object, the user can populate its recipes by assigning tasks to each recipe. For example, the mean-field algorithm can be defined from an empty Algorithm object as:
+After instantiating an Algorithm object, the user can populate its recipes by assigning tasks to each recipe. For example, the mean-field algorithm can be defined from an empty Algorithm object as:
 
 .. code-block:: python
 
@@ -64,7 +74,7 @@ After instantiating an algorithm object, the user can populate its recipes by as
     import qclab.tasks as tasks
     from functools import partial
 
-    # Create an empty algorithm object.
+    # Create an empty Algorithm object.
     algorithm = Algorithm()
     # Populate the initialization recipe.
     algorithm.initialization_recipe = [
@@ -123,6 +133,7 @@ As an example of a complete algorithm we include the source code for the mean-fi
    .. literalinclude:: ../../src/qclab/algorithms/mean_field.py
       :language: python
       :linenos:
+      :lines: 1-76
 
 .. _fssh_source:
 Surface Hopping Example
@@ -152,3 +163,34 @@ As an additional example of a complete algorithm we include the source code for 
    .. literalinclude:: ../../src/qclab/algorithms/fewest_switches_surface_hopping.py
       :language: python
       :linenos:
+      :lines: 1-131
+
+.. _ab_initio_fssh_source:
+Ab Initio Surface Hopping Example
+---------------------------------
+As an example of an algorithm customized to Model objects defined in an adiabatic basis for compatibility with ab initio calculations, here we include the source code for the ab initio 
+fewest-switches surface hopping algorithm implemented in the module ``qclab.algorithms.FewestSwitchesSurfaceHopping``. 
+
+.. list-table:: Ab initio FSSH Collected Observables
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Key
+     - Description
+   * - ``quantum_energy``
+     - The quantum energy of the system.
+   * - ``classical_energy``
+     - The classical energy of the system.
+   * - ``dm_adb``
+     - The adiabatic density matrix of the quantum subsystem.
+   * - ``t``
+     - The time points of the simulation.
+
+
+.. dropdown:: View full source
+   :icon: code
+
+   .. literalinclude:: ../../src/qclab/algorithms/fewest_switches_surface_hopping.py
+      :language: python
+      :linenos:
+      :lines: 132-500

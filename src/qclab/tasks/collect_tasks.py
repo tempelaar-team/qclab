@@ -70,6 +70,7 @@ def collect_dm_db(
     state["output_dict"][dm_db_output_name]: ndarray of shape (B, N, N), dtype=complex128
         Density matrix in the diabatic basis.
 
+
     Notes
     -----
     * B = sim.settings.batch_size

@@ -5,8 +5,7 @@ Running a Spin-Boson Model
 ===========================
 
 Here's a simple example of how to run a spin-boson model with mean-field dynamics in QC Lab.
-
-A jupyter notebook version of this tutorial can be found `here <https://github.com/tempelaar-team/qclab/blob/main/examples/interactive_docs_example.ipynb>`_.
+A Jupyter Notebook version of this tutorial can be found `here <https://github.com/tempelaar-team/qclab/blob/main/examples/interactive_docs_example.ipynb>`_.
 
 
 First, we will need to import the necessary modules:
@@ -21,13 +20,13 @@ First, we will need to import the necessary modules:
     from qclab.dynamics import serial_driver
 
 
-Next, we will set up the simulation object and equip it with the model and algorithm objects:
+Next, we will set up the Simulation object and equip it with the Model and Algorithm objects:
 
 .. code-block:: python
 
-    # Initialize the simulation object.
+    # Initialize the Simulation object.
     sim = Simulation()
-    # Equip it with a spin-boson model object.
+    # Equip it with a spin-boson Model object.
     sim.model = SpinBoson()
     # Attach the mean-field algorithm.
     sim.algorithm = MeanField()
@@ -67,7 +66,8 @@ The output of this code is:
 
 .. note::
     This simulation ran in serial mode. For a speed-up on high-performance architecture, consider adopting the parallel driver by
-    running the simulation as ``data = parallel_driver_multiprocessing(sim)`` instead.
+    running the simulation as ``data = parallel_driver_multiprocessing(sim)`` instead. More information on parallelization can be 
+    found :ref:`here <driver>`
 
 
 I want to increase the reorganization energy.
