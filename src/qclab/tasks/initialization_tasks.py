@@ -572,6 +572,7 @@ def initialize_random_values_fssh(
     Initializes a set of random numbers using the trajectory seeds for FSSH.
 
     .. rubric:: Required Constants
+
     None
 
     Optional Keyword Arguments

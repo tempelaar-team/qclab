@@ -11,6 +11,7 @@ def run_dynamics(sim, state, parameters, data):
     Dynamics core for QC Lab.
 
     .. rubric:: Args
+
     sim: Simulation
         The Simulation object containing the model, algorithm, and settings.
     state: dict
@@ -21,6 +22,7 @@ def run_dynamics(sim, state, parameters, data):
         The Data object for collecting output data.
 
     .. rubric:: Returns
+
     data: Data
         The updated Data object containing collected output data.
     """

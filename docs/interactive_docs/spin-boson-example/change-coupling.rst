@@ -1,8 +1,8 @@
 .. _change-coupling:
 
 
-I want to switch to off-diagonal coupling.
-==========================================
+.. I want to switch to off-diagonal coupling.
+.. ==========================================
 
 
 Changing the coupling term is straightforward! We'll make a new ingredient that couples the boson coordinates to the off-diagonal

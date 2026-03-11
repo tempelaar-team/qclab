@@ -2,8 +2,9 @@
 
 
 
-I want to change the reorganization energy.
-===========================================
+
+.. I want to change the reorganization energy.
+.. ===========================================
 
 Changing the reorganization energy is easy! 
 

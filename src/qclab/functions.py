@@ -25,12 +25,14 @@ def batch_matvec(mat, vec):
     (..., i, j) x (..., j) -> (..., i)
 
     .. rubric:: Args
+
     mat : ndarray
         Input matrix.
     vec : ndarray
         Input vector.
 
     .. rubric:: Returns
+
     out : ndarray
         Result of the multiplication.
     """
@@ -51,6 +53,7 @@ def transform_vec(vec, basis, adb_to_db=False):
     must be broadcastable.
 
     .. rubric:: .. rubric:: Args
+
     vec : ndarray
         Input vector.
     basis : ndarray
@@ -60,6 +63,7 @@ def transform_vec(vec, basis, adb_to_db=False):
         by using the Hermitian conjugate of basis.
 
     .. rubric:: Returns
+
     out : ndarray
         Transformed matrix
     """
@@ -83,6 +87,7 @@ def transform_mat(mat, basis, adb_to_db=False):
     indices. The other indices must be broadcastable.
 
     .. rubric:: Args
+
     mat : ndarray
         Input matrix.
     basis : ndarray
@@ -92,6 +97,7 @@ def transform_mat(mat, basis, adb_to_db=False):
         by using the Hermitian conjugate of basis.
 
     .. rubric:: Returns
+
     out : ndarray
         Transformed matrix
     """
@@ -109,6 +115,7 @@ def update_z_rk4_k123_sum(z_k, classical_force, quantum_classical_force, dt_upda
     for RK4 update. Applies to steps 1-3.
 
     .. rubric:: Args
+
     z_k : ndarray
         Initial complex coordinate for that update step.
     classical_force : ndarray
@@ -119,6 +126,7 @@ def update_z_rk4_k123_sum(z_k, classical_force, quantum_classical_force, dt_upda
         Time step for the update.
 
     .. rubric:: Returns
+
     out : ndarray
         Updated complex coordinates after applying the RK4 step.
     k : ndarray
@@ -142,6 +150,7 @@ def update_z_rk4_k4_sum(
     Low-level function to calculate the fourth (and final) step for the RK4 update.
 
     .. rubric:: Args
+
     z_0 : ndarray
         Initial complex coordinate.
     k1 : ndarray
@@ -158,6 +167,7 @@ def update_z_rk4_k4_sum(
         Time step for the update.
 
     .. rubric:: Returns
+
     z_0 : ndarray
         Updated complex coordinates after applying the RK4 step.
     """
@@ -179,6 +189,7 @@ def dqdp_to_dzc(dq, dp, m, h):
     the derivative w.r.t. zc (``dzc``).
 
     .. rubric:: Args
+
     dq : ndarray | None
         Derivative w.r.t. position coordinate.
     dp : ndarray | None
@@ -189,6 +200,7 @@ def dqdp_to_dzc(dq, dp, m, h):
         classical coordinate weight.
 
     .. rubric:: Returns
+
     dzc : ndarray
         Derivative w.r.t. conjugate complex coordinate.
     """
@@ -211,6 +223,7 @@ def dzdzc_to_dqdp(dz, dzc, m, h):
     ``dq`` and ``dp`` are calculated assuming that :math:`dz = dzc^{*}`.
 
     .. rubric:: Args
+
     dz : ndarray | None
         Derivative w.r.t. complex z coordinate.
     dzc : ndarray | None
@@ -221,6 +234,7 @@ def dzdzc_to_dqdp(dz, dzc, m, h):
         classical coordinate weight.
 
     .. rubric:: Returns
+
     dq : ndarray
         Derivative w.r.t. position coordinate.
     dp : ndarray
@@ -249,6 +263,8 @@ def z_to_q(z, m, h):
     Convert complex coordinates to position coordinate.
 
     .. rubric:: Args
+
+
     z : ndarray
         Complex coordinates.
     m : ndarray
@@ -257,6 +273,8 @@ def z_to_q(z, m, h):
         Classical coordinate weight.
 
     .. rubric:: Returns
+
+
     q : ndarray
         Position coordinates.
     """
@@ -269,6 +287,8 @@ def z_to_p(z, m, h):
     Convert complex coordinates to momentum coordinate.
 
     .. rubric:: Args
+
+
     z : ndarray
         Complex coordinates.
     m : ndarray
@@ -277,6 +297,8 @@ def z_to_p(z, m, h):
         Classical coordinate weight.
 
     .. rubric:: Returns
+
+
     p : ndarray
         Momentum coordinates.
     """
@@ -290,6 +312,8 @@ def qp_to_z(q, p, m, h):
     If only one of ``q`` or ``p`` is provided, then the other is assumed to be zero.
 
     .. rubric:: Args
+
+
     q : ndarray | None
         Position coordinates.
     p : ndarray | None
@@ -300,6 +324,8 @@ def qp_to_z(q, p, m, h):
         Classical coordinate weight.
 
     .. rubric:: Returns
+
+
     z : ndarray
         Complex coordinates.
     """
@@ -320,10 +346,12 @@ def make_ingredient_sparse(ingredient):
     of the indices (``inds``), nonzero elements (``mels``), and ``shape``.
 
     .. rubric:: Args
+
     ingredient : function
         Ingredient to be converted to sparse format.
 
     .. rubric:: Returns
+
     sparse_ingredient : function
         Sparse version of the ingredient.
     """
@@ -347,10 +375,12 @@ def vectorize_ingredient(ingredient):
     index. Other kwargs are assumed to not be vectorized.
 
     .. rubric:: Args
+
     ingredient : function
         Ingredient to be vectorized.
 
     .. rubric:: Returns
+
     vectorized_ingredient : function
         Vectorized version of the ingredient.
     """
@@ -387,6 +417,7 @@ def dh_c_dzc_harmonic_jit(z, h, w):
     the conjugate z coordinate.
 
     .. rubric:: Args
+
     z : ndarray
         Complex coordinates.
     h : ndarray
@@ -395,6 +426,7 @@ def dh_c_dzc_harmonic_jit(z, h, w):
         Harmonic frequency.
 
     .. rubric:: Returns
+
     out : ndarray
         Derivative of the harmonic oscillator classical Hamiltonian function with respect to
         the conjugate z coordinate.
@@ -419,12 +451,14 @@ def h_qc_diagonal_linear_jit(z, gamma):
     :math:`H_{nm} = \\delta_{nm}\\sum_{j} \\gamma_{nj} (z_{j} + z_{j}^*)`
 
     .. rubric:: Args
+
     z : ndarray
         Complex coordinates.
     gamma : ndarray
         Classical coordinate coupling strengths.
 
     .. rubric:: Returns
+
     h_qc : ndarray
         Diagonal linear quantum-classical Hamiltonian.
     """
@@ -456,6 +490,7 @@ def gen_sample_gaussian(constants, z_initial=None, seed=None, separable=True):
     is generated for all classical coordinates (i.e., a single random walker).
 
     .. rubric:: Args
+
     constants : Constants
         Constants object.
     z_initial : ndarray | None, default: None
@@ -467,10 +502,12 @@ def gen_sample_gaussian(constants, z_initial=None, seed=None, separable=True):
         Whether to generate a different random number for each classical coordinate.
 
     .. rubric:: Model Constants
+
     mcmc_std : float, default: 1.0
         Standard deviation of the Gaussian distribution.
 
     .. rubric:: Returns
+
     z : ndarray
         Complex number sampled from a Gaussian distribution.
     rand : ndarray
@@ -504,6 +541,7 @@ def calc_sparse_inner_product(inds, mels, shape, vec_l_conj, vec_r, out=None):
     the vectors ``vec_l_conj`` and ``vec_r`` with  shape ``(batch_size*num_quantum_states)``.
 
     .. rubric:: Args
+
     inds : tuple of ndarrays
         Indices of the nonzero elements in the sparse matrix.
     mels : ndarray
@@ -518,6 +556,7 @@ def calc_sparse_inner_product(inds, mels, shape, vec_l_conj, vec_r, out=None):
         Preallocated output array. If ``None``, a new array is created.
 
     .. rubric:: Returns
+
     out : ndarray
         Result of the inner product with shape ``(batch_size, num_classical_coordinates)``.
     """
@@ -561,6 +600,7 @@ def analytic_der_couple_phase(sim, dh_qc_dzc, eigvals, eigvecs):
     differences.
 
     .. rubric:: Args
+
     sim: Simulation
         Simulation object.
     dh_qc_dzc : tuple
@@ -687,6 +727,7 @@ def calc_resc_dir_z_fssh(
     If they are not, an error is logged.
 
     .. rubric:: Args
+
     eigval_diff : ndarray
         Difference in eigenvalues between the initial and final states, ``e_final - e_initial``.
     eigvec_init_state : ndarray
@@ -702,6 +743,7 @@ def calc_resc_dir_z_fssh(
         Classical coordinate weight.
 
     .. rubric:: Returns
+
     dkj_zc : ndarray
         Nonadiabatic coupling vector for rescaling the z coordinate.
         Derivative is w.r.t. z*.
@@ -775,6 +817,7 @@ def numerical_fssh_hop(model, parameters, **kwargs):
 
 
     .. rubric:: Model Constants
+
     numerical_fssh_hop_gamma_range : float, default: 5.0
         Initial range (negative to positive) of gamma values to search over.
     numerical_fssh_hop_max_iter : int, default: 20
@@ -785,6 +828,7 @@ def numerical_fssh_hop(model, parameters, **kwargs):
         Energy threshold for convergence.
 
     .. rubric:: Returns
+
     ndarray
         The shift to apply to the complex coordinate to conserve energy.
     hop_successful : bool

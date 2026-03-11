@@ -19,14 +19,17 @@ def h_c_harmonic(model, parameters, **kwargs):
     :math:`H_{\\mathrm{c}} = \\frac{1}{2}\\sum_{n} \\left( \\frac{p_n^2}{m_n} + m_n \\omega_n^2 q_n^2 \\right)`
 
     .. rubric:: Keyword Args
+
     z : ndarray
         complex classical coordinates.
 
     .. rubric:: Model Constants
+
     harmonic_frequency : ndarray
         Harmonic frequency of each classical coordinate.
 
     .. rubric:: Returns
+
     h_c : ndarray
         Classical Hamiltonian.
         ``(batch_size,)``.
@@ -48,13 +51,16 @@ def h_c_free(model, parameters, **kwargs):
     :math:`H_{\\mathrm{c}} = \\sum_{n} \\left( \\frac{p_n^2}{2m_n} \\right)`
 
     .. rubric:: Keyword Args
+
     z : ndarray
         complex classical coordinates.
 
     .. rubric:: Model Constants
+
     None
 
     .. rubric:: Returns
+
     h_c : ndarray
         Classical Hamiltonian.
         ``(batch_size,)``.
@@ -70,18 +76,21 @@ def h_c_free(model, parameters, **kwargs):
 def dh_c_dzc_harmonic(model, parameters, **kwargs):
     """
     Derivative of the harmonic oscillator classical Hamiltonian function with respect to
-    the conjugate :math:`z`coordinate. This is an ingredient that calls the low-level
+    the conjugate :math:`z` coordinate. This is an ingredient that calls the low-level
     function ``dh_c_dzc_harmonic_jit``.
 
     .. rubric:: Keyword Args
+
     z : ndarray
         complex classical coordinates.
 
     .. rubric:: Model Constants
+
     harmonic_frequency : ndarray
         Harmonic frequency of each classical coordinate.
 
     .. rubric:: Returns
+
     dh_c_dzc : ndarray
         Gradient of the classical Hamiltonian with respect to the conjugate classical
         coordinate.
@@ -96,16 +105,19 @@ def dh_c_dzc_harmonic(model, parameters, **kwargs):
 def dh_c_dzc_free(model, parameters, **kwargs):
     """
     Derivative of the free particle classical Hamiltonian function with respect to the
-    conjugate :math:`z`coordinate.
+    conjugate :math:`z` coordinate.
 
     .. rubric:: Keyword Args
+
     z : ndarray
         complex classical coordinates.
 
     .. rubric:: Model Constants
+
     None
 
     .. rubric:: Returns
+
     dh_c_dzc : ndarray
         Gradient of the classical Hamiltonian with respect to the conjugate classical
         coordinate.
@@ -123,10 +135,12 @@ def h_q_two_level(model, parameters, **kwargs):
     :math:`H_{nm} = \\delta_{nm}\\mathrm{two\\_level\\_nn}+(1-\\delta_{nm})(\\mathrm{two\\_level\\_nm\\_re} + i\, \\mathrm{two\\_level\\_nm\\_im})`
 
     .. rubric:: Keyword Args
+
     batch_size : int
         Number of trajectories in a batch.
 
     .. rubric:: Model Constants
+
     two_level_00 : float
         Energy of the first level.
     two_level_11 : float
@@ -137,6 +151,7 @@ def h_q_two_level(model, parameters, **kwargs):
         Imaginary part of the off-diagonal coupling.
 
     .. rubric:: Returns
+
     h_q : ndarray
         Quantum Hamiltonian.
         ``(batch_size, num_states, num_states)``.
@@ -162,16 +177,19 @@ def h_q_nearest_neighbor(model, parameters, **kwargs):
     :math:`H_{nm} = -t (\\delta_{n,m+1} + \\delta_{n,m-1})`
 
     .. rubric:: Keyword Args
+
     batch_size : int
         Number of trajectories in a batch.
 
     .. rubric:: Model Constants
+
     nearest_neighbor_hopping_energy : float
         Hopping energy between sites :math:`t`.
     nearest_neighbor_periodic : bool
         Whether to apply periodic boundary conditions.
 
     .. rubric:: Returns
+
     h_q : ndarray
         Quantum Hamiltonian.
         ``(batch_size, num_states, num_states)``.
@@ -202,14 +220,17 @@ def h_qc_diagonal_linear(model, parameters, **kwargs):
     :math:`H_{nm} = \\delta_{nm}\\sum_{j} \\gamma_{nj} (z_{j} + z_{j}^*)`
 
     .. rubric:: Keyword Args
+
     z : ndarray
         complex classical coordinates.
 
     .. rubric:: Model Constants
+
     diagonal_linear_coupling : ndarray
         Coupling constants :math:`\\gamma`.
 
     .. rubric:: Returns
+
     h_qc : ndarray
         Quantum-classical coupling Hamiltonian.
         ``(batch_size, num_states, num_states)``.
@@ -227,14 +248,17 @@ def dh_qc_dzc_diagonal_linear(model, parameters, **kwargs):
     :math:`[\\partial_{z} H_{qc}]_{ijkl} = \\delta_{kl}\\gamma_{kj}`
 
     .. rubric:: Keyword Args
+
     z : ndarray
         complex classical coordinates.
 
     .. rubric:: Model Constants
+
     diagonal_linear_coupling : ndarray
         Coupling constants :math:`\\gamma`.
 
     .. rubric:: Returns
+
     inds : tuple of ndarray
         Indices of the non-zero elements of the gradient.
         ``(batch_index, coordinate_index, row_index, column_index)``.
@@ -286,6 +310,7 @@ def hop_harmonic(model, parameters, **kwargs):
         \\epsilon_{\\mathrm{final}}
 
     .. rubric:: Keyword Args
+
     z : ndarray
         Current classical coordinates.
     resc_dir_z : ndarray
@@ -294,10 +319,12 @@ def hop_harmonic(model, parameters, **kwargs):
         Energy difference between final and initial states.
 
     .. rubric:: Model Constants
+
     harmonic_frequency : ndarray
         Harmonic frequency of each classical coordinate.
 
     .. rubric:: Returns
+
     shift : ndarray
         Shift in the classical coordinates.
     hop : bool
@@ -357,6 +384,7 @@ def hop_free(model, parameters, **kwargs):
         \\epsilon_{\\mathrm{final}}
 
     .. rubric:: Keyword Args
+
     z : ndarray
         Current classical coordinates.
     resc_dir_z : ndarray
@@ -365,9 +393,11 @@ def hop_free(model, parameters, **kwargs):
         Energy difference between final and initial states.
 
     .. rubric:: Model Constants
+
     None
 
     .. rubric:: Returns
+
     shift : ndarray
         Shift in the classical coordinates.
     hop : bool
@@ -409,16 +439,19 @@ def init_classical_boltzmann_harmonic(model, parameters, **kwargs):
     :math:`P(z) \\propto \\exp(-H_{\\mathrm{c}}/k_{\\mathrm{B}}T)`
 
     .. rubric:: Keyword Args
+
     seed : ndarray, int
         Random seeds for each trajectory.
 
     .. rubric:: Model Constants
+
     kBT : float
         Thermal quantum.
     harmonic_frequency : ndarray
         Harmonic frequency of each classical coordinate.
 
     .. rubric:: Returns
+
     z : ndarray
         complex classical coordinates.
     """
@@ -453,16 +486,19 @@ def init_classical_wigner_harmonic(model, parameters, **kwargs):
     state of a harmonic oscillator.
 
     .. rubric:: Keyword Args
+
     seed : ndarray, int
         Random seeds for each trajectory.
 
     .. rubric:: Model Constants
+
     kBT : float
         Thermal quantum.
     harmonic_frequency : ndarray
         Harmonic frequency of each classical coordinate.
 
     .. rubric:: Returns
+
     z : ndarray
         complex classical coordinates.
     """
@@ -500,16 +536,19 @@ def init_classical_definite_position_momentum(model, parameters, **kwargs):
     Initialize classical coordinates with definite position and momentum.
 
     .. rubric:: Keyword Args
+
     seed : ndarray, int
         Random seeds for each trajectory.
 
     .. rubric:: Model Constants
+
     init_position : ndarray
         Initial position of the classical coordinates.
     init_momentum : ndarray
         Initial momentum of the classical coordinates.
 
     .. rubric:: Returns
+
     z : ndarray
         complex classical coordinates.
     """
@@ -538,16 +577,19 @@ def init_classical_wigner_coherent_state(model, parameters, **kwargs):
     :math:`P(z) \\propto \\exp(-2\\vert(z - a)\\vert^{2})`.
 
     .. rubric:: Keyword Args
+
     seed : ndarray, int
         Random seeds for each trajectory.
 
     .. rubric:: Model Constants
+
     coherent_state_displacement : ndarray
         Complex displacement parameter of the coherent state.
     harmonic_frequency : ndarray
         Harmonic frequency of each classical coordinate.
 
     .. rubric:: Returns
+
     z : ndarray
         complex classical coordinates.
     """
@@ -590,6 +632,7 @@ def rescaling_direction_random(model, parameters, **kwargs):
     the per-trajectory level.
 
     .. rubric:: Keyword Args
+
     z_traj : ndarray
         Current classical coordinates in the trajectory being rescaled.
     init_state_ind : int
@@ -598,9 +641,11 @@ def rescaling_direction_random(model, parameters, **kwargs):
         Index of the final quantum state.
 
     .. rubric:: Model Constants
+
     None
 
     .. rubric:: Returns
+
     resc_dir_z : ndarray
         Direction in which to rescale coordinates.
     """
@@ -618,6 +663,7 @@ def gauge_field_force_zero(model, parameters, **kwargs):
     It is only included for use in code tests.
 
     .. rubric:: Keyword Args
+
     z : ndarray
         Current classical coordinates.
     state_ind : int
@@ -625,9 +671,11 @@ def gauge_field_force_zero(model, parameters, **kwargs):
 
 
     .. rubric:: Model Constants
+
     None
 
     .. rubric:: Returns
+
     gauge_force : ndarray
         Gauge field force.
     """

@@ -18,6 +18,7 @@ def parallel_driver_multiprocessing(sim, seeds=None, data=None, num_tasks=None):
     Parallel driver for the dynamics core using the python library multiprocessing.
 
     .. rubric:: Args
+
     sim: Simulation
         The Simulation object containing the model, algorithm, initial state, and settings.
     seeds: ndarray, optional
@@ -31,6 +32,7 @@ def parallel_driver_multiprocessing(sim, seeds=None, data=None, num_tasks=None):
         number of available tasks will be used.
 
     .. rubric:: Returns
+
     data: Data
         The updated Data object containing collected output data.
     """

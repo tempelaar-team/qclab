@@ -173,6 +173,7 @@ def update_dh_qc_dzc_finite_differences(
     differences.
 
     .. rubric:: Required Constants
+
     dh_qc_dzc_finite_difference_delta : float, default : numerical_constants.FINITE_DIFFERENCE_DELTA
         Finite-difference step size.
 
@@ -1226,6 +1227,7 @@ def update_hop_vals_fssh(
     direction will be calculated with ``functions.calc_resc_dir_z_fssh``.
 
     .. rubric:: Required Constants
+
     None
 
     Optional Keyword Arguments

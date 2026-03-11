@@ -1,7 +1,7 @@
 .. _change-algorithm:
 
-I want to use FSSH instead.
-===========================
+.. I want to use FSSH instead.
+.. ===========================
 
 Sure! Following the last example you can simply swap out ``sim.algorithm`` to use ``FewestSwitchesSurfaceHopping``.
 

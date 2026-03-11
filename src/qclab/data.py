@@ -30,6 +30,7 @@ class Data:
         Add data to the output dictionary ``self.data_dict``.
 
         .. rubric:: Args
+
         sim: Simulation
             The Simulation object containing settings and parameters.
         state: dict
@@ -72,6 +73,7 @@ class Data:
         Add data from ``new_data`` to the output dictionary ``self.data_dict``.
 
         .. rubric:: Args
+
         new_data: Data
             A Data instance containing the new data to merge.
         """
@@ -104,6 +106,7 @@ class Data:
         each variable is saved using numpy.savez.
 
         .. rubric:: Args
+
         filename : str
             The file name to save the data to.
         disable_h5py : bool, default: qclab.utils.DISABLE_H5PY
@@ -121,12 +124,14 @@ class Data:
         Load a Data object from ``filename``.
 
         .. rubric:: Args
+
         filename : str
             The file name to load the data from.
         disable_h5py : bool, default: qclab.utils.DISABLE_H5PY
             If True, h5py is not used even if available.
 
         .. rubric:: Returns
+
         Data : Data
             The loaded Data object.
         """
@@ -150,6 +155,7 @@ class Data:
         Recursively save dictionary contents to an HDF5 group.
 
         .. rubric:: Args
+
         h5file : h5py.File
             The HDF5 file object to save data into.
         path : str
@@ -173,6 +179,7 @@ class Data:
         Recursively load dictionary contents from an HDF5 group.
 
         .. rubric:: Args
+
         h5file : h5py.File
             The HDF5 file object to load data from.
         path : str

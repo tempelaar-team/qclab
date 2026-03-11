@@ -208,6 +208,7 @@ Importantly, a model's ingredients list is executed from back to front. This mea
 
 
 .. _spinboson_model:
+
 Spin-Boson Model
 --------------------------
 

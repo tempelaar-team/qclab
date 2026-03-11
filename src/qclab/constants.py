@@ -35,12 +35,17 @@ class Constants:
         Get the value of an attribute, returning default if it does not exist.
 
         .. rubric:: Args
+
+
+
+
         name : str
             The name of the attribute to get.
         default : any, optional
             The default value to return if the attribute does not exist.
 
         .. rubric:: Returns
+
         self.name : any
             The value of the attribute.
         """

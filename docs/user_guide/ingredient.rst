@@ -11,7 +11,7 @@ Ingredients are functions that encode the physics of a model. QC Lab is designed
     H(q,p) = \hat{H}_{\mathrm{q}} + \hat{H}_{\mathrm{q-c}}(q) + H_{\mathrm{c}}(q,p)
 
 where :math:`\hat{H}_\mathrm{q}` is the quantum Hamiltonian, :math:`\hat{H}_{\mathrm{q-c}}(q)` is the quantum-classical coupling Hamiltonian, and :math:`H_{\mathrm{c}}(q,p)` is the classical Hamiltonian. 
-As discussed in the :ref:`Model <model>` section, models defined in an adiabatic basis also provide the derivative coupling tensor :math:`D_{nij}(q)=\langle i(q)\vert\partial_{n}\vert j(q)\rangle`.
+As discussed in the :ref:`Model <model>` section, models defined in an adiabatic basis also provide the derivative coupling tensor :math:`d^{n}_{ij}(q)=\langle i(q)\vert\partial_{n}\vert j(q)\rangle`.
 
 A generic ingredient has the form:
 
@@ -125,7 +125,7 @@ Alternatively, vectorization can be implemented manually. For example, the follo
 
 
 Sparse Quantum-Classical Gradients
----------------------------------
+----------------------------------
 
 If left unspecified, the gradient of the quantum-classical Hamiltonian will be calculated numerically using finite differences. This can be computationally expensive and may introduce inaccuracies. This can be avoided by providing an analytical implementation of the gradient ingredient ``dh_qc_dzc``. In QC Lab, we implement this gradient in a sparse manner, meaning that we only compute the non-zero elements of the gradient matrix. This reduces the potentially large gradient tensor with shape ``(sim.settings.batch_size, model.constants.num_classical_coordinates, model.constants.num_quantum_states, model.constants.num_quantum_states)`` to a list of non-zero elements, ``mels``, their indices ``inds``, and the shape of the full tensor ``shape``. 
 

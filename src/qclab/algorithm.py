@@ -39,6 +39,13 @@ class Algorithm:
         each task in the recipe.
 
         .. rubric:: Args
+
+
+
+
+
+
+
         sim: Simulation
             The Simulation object containing settings and parameters.
         state: dict
@@ -49,6 +56,7 @@ class Algorithm:
             The list of functions to execute in order.
 
         .. rubric:: Returns
+
         state: dict
             The updated simulation state after executing the recipe.
         parameters: dict

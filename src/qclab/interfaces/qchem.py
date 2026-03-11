@@ -489,6 +489,7 @@ class QCLabQChemInterface:
         Results are stored in ``self.results``.
 
         .. rubric:: Args
+
         **kwargs:
             Keyword arguments keyed by property name (e.g. 'energy', 'gradient').
             Each value is a dict of options specific to that property.

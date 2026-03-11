@@ -16,6 +16,7 @@ def serial_driver(sim, seeds=None, data=None):
     Serial driver for the dynamics core.
 
     .. rubric:: Args
+
     sim: Simulation
         The Simulation object containing the model, algorithm, initial state, and settings.
     seeds: ndarray, optional
@@ -26,6 +27,7 @@ def serial_driver(sim, seeds=None, data=None):
         will be created.
 
     .. rubric:: Returns
+
     data: Data
         The updated Data object containing collected output data.
     """

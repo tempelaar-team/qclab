@@ -1,8 +1,8 @@
 .. _modify-fssh:
 
 
-Modifying the FSSH Algorithm
-============================
+.. Modifying the FSSH Algorithm
+.. ============================
 
 Let's try modifying the FSSH algorithm so that the directions of the velocities of frustrated trajectories are reversed.
 In the :ref:`complex coordinate formalism <coordinates>`, this means conjugating the `z` coordinate of the frustrated trajectories.

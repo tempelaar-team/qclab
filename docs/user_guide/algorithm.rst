@@ -18,6 +18,7 @@ which are the most common use case for an adiabatic basis.
 
 
 .. _algorithm_objects:
+
 Algorithm Objects
 -----------------------
 
@@ -136,6 +137,7 @@ As an example of a complete algorithm we include the source code for the mean-fi
       :lines: 1-76
 
 .. _fssh_source:
+
 Surface Hopping Example
 -------------------------------
 
@@ -166,6 +168,7 @@ As an additional example of a complete algorithm we include the source code for 
       :lines: 1-131
 
 .. _ab_initio_fssh_source:
+
 Ab Initio Surface Hopping Example
 ---------------------------------
 As an example of an algorithm customized to Model objects defined in an adiabatic basis for compatibility with ab initio calculations, here we include the source code for the ab initio 
