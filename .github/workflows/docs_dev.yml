@@ -44,7 +44,7 @@ jobs:
         ls _build/html
 
     - name: Upload static files as artifact
-      id: deployment
+      id: artifact-upload
       uses: actions/upload-pages-artifact@v3
       with:
         path: docs/_build/html/
