@@ -1,70 +1,74 @@
-
 name: Docs Dev
 
 on:
   push:
-    branches:
-      - dev
+    branches: [dev]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/docs_dev.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: docs-dev
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install .[docs]
+      - name: Install graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
 
-    - name: Install additional dependencies
-      run: |
-        sudo apt-get install -y graphviz
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[docs]
 
-    - name: Build documentation
-      env:
-        SPHINXOPTS: "-D html_baseurl=https://tempelaar-team.github.io/qclab-dev/"
-      run: |
-        cd docs
-        make clean
-        make html
+      - name: Build documentation
+        env:
+          SPHINXOPTS: "-D html_baseurl=https://tempelaar-team.github.io/qclab-dev/"
+        run: |
+          cd docs
+          make clean
+          make html
 
-    - name: Deploy to tempelaar-team/qclab-dev
-      env:
-        DEPLOY_TOKEN: ${{ secrets.QCLAB_DEV_DEPLOY_TOKEN }}
-      run: |
-        # Store credentials without embedding token in process args
-        echo "https://x-access-token:${DEPLOY_TOKEN}@github.com" \
-          > /tmp/git-credentials
-        git config --global credential.helper \
-          "store --file=/tmp/git-credentials"
+      - name: Deploy to tempelaar-team/qclab-dev
+        env:
+          DEPLOY_TOKEN: ${{ secrets.QCLAB_DEV_DEPLOY_TOKEN }}
+        run: |
+          echo "https://x-access-token:${DEPLOY_TOKEN}@github.com" \
+            > /tmp/git-credentials
+          git config --global credential.helper \
+            "store --file=/tmp/git-credentials"
 
-        git clone --depth=1 \
-          https://github.com/tempelaar-team/qclab-dev.git \
-          /tmp/qclab-dev
+          git clone --depth=1 \
+            https://github.com/tempelaar-team/qclab-dev.git \
+            /tmp/qclab-dev
 
-        # Remove all tracked/untracked content, preserving .git metadata
-        find /tmp/qclab-dev -mindepth 1 -maxdepth 1 \
-          -not -name '.git' -exec rm -rf {} +
+          find /tmp/qclab-dev -mindepth 1 -maxdepth 1 \
+            -not -name '.git' -exec rm -rf {} +
 
-        # Copy newly built HTML and ensure .nojekyll is present
-        cp -r docs/_build/html/. /tmp/qclab-dev/
-        touch /tmp/qclab-dev/.nojekyll
+          cp -r docs/_build/html/. /tmp/qclab-dev/
+          touch /tmp/qclab-dev/.nojekyll
 
-        cd /tmp/qclab-dev
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add -A
-        git diff-index --quiet HEAD || \
-          git commit -m "docs: deploy from qclab@${{ github.sha }}"
-        git push
+          cd /tmp/qclab-dev
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff-index --quiet HEAD || \
+            git commit -m "docs: deploy from qclab@${{ github.sha }}"
+          git push

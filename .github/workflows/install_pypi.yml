@@ -1,12 +1,18 @@
 name: Install matrix (Windows/macOS/Linux) PyPI
 
+# Triggered after a release is published. Use workflow_dispatch to re-run
+# manually after PyPI's index has caught up if the post-release run failed.
 on:
   release:
-    types: [published]    # or: push -> tags: ["v*"]
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: install-pypi-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   install-from-pypi:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref_name == 'main' }}
     name: Install from PyPI — ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -20,6 +26,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+      - name: Wait for PyPI to propagate
+        shell: bash
+        run: sleep 60
       - name: Install published package
         run: |
           python -m pip install -U pip

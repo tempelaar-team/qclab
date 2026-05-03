@@ -2,7 +2,11 @@ name: Build & Publish to PyPI
 
 on:
   release:
-    types: [published]    # or: push -> tags: ["v*"]
+    types: [published]
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false   # never cancel a publish in flight
 
 jobs:
   build-and-publish:
