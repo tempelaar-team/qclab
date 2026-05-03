@@ -1,23 +1,32 @@
 name: Pylint
 
-on: [push]
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - '.github/workflows/pylint.yml'
+
+concurrency:
+  group: pylint-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  pylint:
+    name: Pylint (informational)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.8", "3.9", "3.10"]
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pylint
-    - name: Analysing the code with pylint
-      run: |
-        pylint $(git ls-files '*.py') || true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install pylint
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint
+          pip install .   # so pylint can resolve imports
+      - name: Run pylint
+        # Currently informational. Remove `|| true` to make this enforcing.
+        run: pylint $(git ls-files '*.py') || true

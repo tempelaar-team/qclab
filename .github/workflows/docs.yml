@@ -1,68 +1,63 @@
-
 name: Docs
 
 on:
-    push:
-        branches:
-            - main
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
 permissions:
   id-token: write
-  contents: write # Optionally, if your deployment needs to push changes
+  contents: write
   pages: write
+
+concurrency:
+  group: docs-main
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        # pip install sphinx
-        # pip install pydata-sphinx-theme
-        # pip install sphinx-design
-        # pip install sphinx-togglebutton
-        # pip install sphinxcontrib-mermaid
-        # pip install graphviz
-        pip install .[docs]
-    - name: Install additional dependencies
-      run: |
-        sudo apt-get install -y graphviz
-    - name: Build documentation
-      id: build
-      run: |
-        cd docs
-        make clean
-        make html
-        ls _build/html
-        ls _build/html/_images/
-    # - name: Upload artifacts
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: documentation
-    #     path: |
-    #       docs/_build/html/
-    - name: Upload static files as artifact
-      id: deployment
-      uses: actions/upload-pages-artifact@v3 # or specific "vX.X.X" version tag for this action
-      with:
-        path: docs/_build/html/
+      - name: Install graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
 
-    # Deployment job
+      - name: Install package and docs deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[docs]
+
+      - name: Build documentation
+        run: |
+          cd docs
+          make clean
+          make html
+
+      - name: Upload pages artifact
+        id: deployment
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html/
+
   deploy:
+    runs-on: ubuntu-latest
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
