@@ -35,6 +35,7 @@ A new algorithm = a new ordering of existing tasks. A new model = a new ingredie
 | Write new code that must match QC Lab style (naming, docstrings, module layout) | `references/style_guide.md` |
 | Look up ingredient slot names, state-dict keys, model constants, algorithm settings | `references/conventions.md` |
 | Run a simulation, read Data, add a collect task, do a parameter scan, build a new model | `references/handbook.md` |
+| Open a PR / contribute changes upstream / understand what CI will run | `references/contributing.md` |
 | See a complete runnable script | `worked_examples/` — pick the one closest to your task |
 
 For most code-generation requests, read `references/conventions.md` (for the exact key/slot vocabulary) AND `references/handbook.md` (for the recipe to follow). For new-model or new-ingredient work, also read `references/style_guide.md`.
@@ -78,6 +79,12 @@ These are the errors Claude is most likely to make when generating QC Lab code. 
 17. **`gauge_fixing: "phase_der_couple"` is only needed when coupling is complex-valued.** For real-valued problems (Tully models, standard spin-boson), the default `"sign_overlap"` is sufficient and correct. Only use `"phase_der_couple"` when the derivative couplings or Hamiltonians are genuinely complex.
 
 18. **When a request is ambiguous, ask for clarification.** If the user asks for something like "expectation value of position on the lower adiabatic surface", there are multiple reasonable interpretations (population-weighted position, trajectory-resolved position, etc.). Ask the user what they mean rather than guessing.
+
+19. **Don't push directly to `dev` or `main`, and don't open PRs into `main`.**
+    QC Lab uses a PR-into-`dev` workflow; release PRs (`dev` → `main`)
+    are a maintainer action. See `references/contributing.md` section 6
+    for the full list of operations Claude should not perform without
+    explicit confirmation.
 
 ## Quick-start template
 
