@@ -36,9 +36,10 @@ A new algorithm = a new ordering of existing tasks. A new model = a new ingredie
 | Look up ingredient slot names, state-dict keys, model constants, algorithm settings | `references/conventions.md` |
 | Run a simulation, read Data, add a collect task, do a parameter scan, build a new model | `references/handbook.md` |
 | Open a PR / contribute changes upstream / understand what CI will run | `references/contributing.md` |
+| Answer a question about the QC Lab paper / SI / formalism / cited references | `references/publication.md` |
 | See a complete runnable script | `worked_examples/` — pick the one closest to your task |
 
-For most code-generation requests, read `references/conventions.md` (for the exact key/slot vocabulary) AND `references/handbook.md` (for the recipe to follow). For new-model or new-ingredient work, also read `references/style_guide.md`.
+For most code-generation requests, read `references/conventions.md` (for the exact key/slot vocabulary) AND `references/handbook.md` (for the recipe to follow). For new-model or new-ingredient work, also read `references/style_guide.md`. For questions about the published paper (Krotz et al., *JCTC* **2026**, *22*, 3144; DOI [10.1021/acs.jctc.5c01818](https://doi.org/10.1021/acs.jctc.5c01818)), start with `references/publication.md` — it covers the formalism, the SI equations, and the architecture-to-code mapping. The full article and supporting information are open access on the JCTC website; link the user there when they need exact wording or primary-source detail.
 
 ## Critical mistakes to avoid
 

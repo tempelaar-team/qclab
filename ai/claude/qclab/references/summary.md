@@ -10,6 +10,8 @@ z = sqrt(m*h/2) * q + i * sqrt(1/(2*m*h)) * p
 
 where `m` is the coordinate mass and `h` is a per-coordinate weight. All forces, gradients, and integrators are written in terms of `z` and its conjugate `z*`.
 
+The package itself is described in Krotz, Garzón-Ramírez, Byrd, Miyazaki & Tempelaar, *J. Chem. Theory Comput.* **2026**, *22*, 3144–3152 (DOI [10.1021/acs.jctc.5c01818](https://doi.org/10.1021/acs.jctc.5c01818)). For paper- and SI-level questions — exact equations, figure details, reference numbers, or wording — see `references/publication.md`, which links to the open-access JCTC article and SI.
+
 ## Shipped algorithms
 
 - **Mean-field (Ehrenfest)** — `MeanField`, `MeanFieldAbInitio`
