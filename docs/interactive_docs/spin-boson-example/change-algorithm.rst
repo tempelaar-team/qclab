@@ -21,7 +21,7 @@ The output has changed once more:
     :width: 50%
 
 
-You can learn about algorithms in the `Algorithms <../../user_guide/algorithms/algorithms.html>`_ documentation.
+You can learn about algorithms in the :ref:`Algorithms <algorithm>` documentation.
 
 
 .. note::

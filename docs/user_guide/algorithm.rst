@@ -113,7 +113,7 @@ Mean Field Example
 
 As an example of a complete algorithm we include the source code for the mean-field algorithm below. This algorithm is defined in the ``qclab.algorithms.MeanField`` module and uses tasks from the ``qclab.tasks`` module to populate its recipes.
 
-.. list-table:: FSSH Collected Observables
+.. list-table:: Mean-field collected observables
    :header-rows: 1
    :widths: 25 75
 
@@ -134,7 +134,7 @@ As an example of a complete algorithm we include the source code for the mean-fi
    .. literalinclude:: ../../src/qclab/algorithms/mean_field.py
       :language: python
       :linenos:
-      :lines: 1-76
+      :pyobject: MeanField
 
 .. _fssh_source:
 
@@ -143,7 +143,7 @@ Surface Hopping Example
 
 As an additional example of a complete algorithm we include the source code for the fewest-switches surface hopping algorithm below. This algorithm is defined in the ``qclab.algorithms.FewestSwitchesSurfaceHopping`` module and uses tasks from the ``qclab.tasks`` module to populate its recipes.
 
-.. list-table:: FSSH Collected Observables
+.. list-table:: FSSH collected observables
    :header-rows: 1
    :widths: 25 75
 
@@ -165,7 +165,7 @@ As an additional example of a complete algorithm we include the source code for 
    .. literalinclude:: ../../src/qclab/algorithms/fewest_switches_surface_hopping.py
       :language: python
       :linenos:
-      :lines: 1-131
+      :pyobject: FewestSwitchesSurfaceHopping
 
 .. _ab_initio_fssh_source:
 
@@ -174,7 +174,7 @@ Ab Initio Surface Hopping Example
 As an example of an algorithm customized to Model objects defined in an adiabatic basis for compatibility with ab initio calculations, here we include the source code for the ab initio 
 fewest-switches surface hopping algorithm implemented in the module ``qclab.algorithms.FewestSwitchesSurfaceHopping``. 
 
-.. list-table:: Ab initio FSSH Collected Observables
+.. list-table:: Ab initio FSSH collected observables
    :header-rows: 1
    :widths: 25 75
 
@@ -196,4 +196,4 @@ fewest-switches surface hopping algorithm implemented in the module ``qclab.algo
    .. literalinclude:: ../../src/qclab/algorithms/fewest_switches_surface_hopping.py
       :language: python
       :linenos:
-      :lines: 132-500
+      :pyobject: FewestSwitchesSurfaceHoppingAbInitio

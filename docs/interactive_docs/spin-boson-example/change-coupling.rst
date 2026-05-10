@@ -14,7 +14,7 @@ QC Lab's built-in vectorization decorator to automatically vectorize it.
 
 .. code-block:: python
 
-    from qclab.ingredients import vectorize_ingredient
+    from qclab.functions import vectorize_ingredient
 
     @vectorize_ingredient
     def h_qc(model, parameters, **kwargs):
@@ -47,10 +47,11 @@ using finite differences.
     sim.model.ingredients.append(("dh_qc_dzc", None))
 
 
-Now we can run the simulation with the new coupling term and compare the results to the previous simulation. 
-You'll notice a small decrease in the performance of the simulation due to the numerical calculation of the gradients. 
-If you'd like to speed up the simulation, you can implement an analytical gradient for the new coupling term by following the 
-`model development guide <../../developer_guide/model_dev/model_dev.html>`_.
+Now we can run the simulation with the new coupling term and compare the results to the previous simulation.
+You'll notice a small decrease in the performance of the simulation due to the numerical calculation of the gradients.
+If you'd like to speed up the simulation, you can implement an analytical gradient for the new coupling term by following the
+:ref:`model development guide <developing-models>`. The :ref:`Sparse Quantum-Classical Gradients <ingredient>` section also covers
+the analytical-gradient pattern.
 
 
 .. image:: fssh_lreorg_inv_vel_offdiag.png

@@ -25,7 +25,60 @@ A generic ingredient has the form:
         # Return the computed ingredient.
         return ingredient
 
-where ``model`` is a Model object which contains all the constants of the model, ``parameters`` is a dictionary containing time-dependent parameters of the simulation, and ``**kwargs`` are any additional keyword arguments that are specific to that ingredient type. 
+where ``model`` is a Model object which contains all the constants of the model, ``parameters`` is a dictionary containing time-dependent parameters of the simulation, and ``**kwargs`` are any additional keyword arguments that are specific to that ingredient type.
+
+The full set of standard slot names, the keyword arguments each one consumes, and the shape of its return value are listed in :ref:`Conventions <conventions>`. The most commonly used slots are summarised here:
+
+.. list-table:: Standard ingredient slots
+   :header-rows: 1
+   :widths: 22 28 30 20
+
+   * - Slot
+     - Required kwargs
+     - Returns
+     - Used by
+   * - ``h_q``
+     - ``batch_size``
+     - ``(B, N, N)`` complex Hamiltonian
+     - every algorithm
+   * - ``h_qc``
+     - ``z``
+     - ``(B, N, N)`` complex Hamiltonian
+     - every algorithm
+   * - ``h_c``
+     - ``z``
+     - ``(B,)`` real classical energy
+     - mean-field, FSSH
+   * - ``dh_qc_dzc``
+     - ``z``
+     - sparse ``(inds, mels, shape)`` for ``(B, C, N, N)``
+     - every algorithm; falls back to finite differences if absent
+   * - ``dh_c_dzc``
+     - ``z``
+     - ``(B, C)`` complex gradient
+     - every algorithm; falls back to finite differences if absent
+   * - ``init_classical``
+     - ``seed``
+     - ``(B, C)`` complex initial coordinates
+     - every algorithm; falls back to MCMC if absent
+   * - ``hop``
+     - ``z``, ``resc_dir_z``, ``eigval_diff``
+     - ``(shift, hop_bool)``
+     - FSSH only
+   * - ``derivative_coupling_dzc``
+     - ``z``
+     - ``(B, C, N, N)`` complex
+     - ab initio only
+   * - ``gauge_field_force``
+     - ``z``, ``state_ind``
+     - ``(B, C)`` complex
+     - optional, when ``use_gauge_field_force == True``
+   * - ``ab_initio_property_calculator``
+     - ``property_dict``, ``traj_ind``
+     - dict of energies / gradients / couplings
+     - ab initio only
+
+Here ``B = sim.settings.batch_size``, ``C = num_classical_coordinates`` and ``N = num_quantum_states``.
 
 Ingredients in QC lab can come in different variations, for example the quantum Hamiltonian ingredient could describe a two-level system, a nearest-neighbor lattice, or a more complicated Hamiltonian. The type and variety of an ingredient is specified in its name which follows the convention ``<ingredient_type>_<variety>``. For example, the quantum Hamiltonian ingredient for a two-level system is named ``h_q_two_level`` where ``h_q`` indicates that it is a quantum Hamiltonian ingredient and ``two_level`` indicates that it describes a two-level system. Likewise the classical Hamiltonian ingredient for a harmonic oscillator is named ``h_c_harmonic`` where ``h_c`` indicates that it is a classical Hamiltonian ingredient and ``harmonic`` indicates that it describes a harmonic oscillator.
 

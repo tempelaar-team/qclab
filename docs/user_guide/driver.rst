@@ -5,11 +5,11 @@ Drivers
 ==========================
 
 
-QC Lab comes equipped with three dynamics drivers. These are functions that take a Simulation object (see :ref:`Simulations <simulation>`) as input and carry out the dynamics by executing the recipes of the Algorithm object (see :ref:`Algorithms <algorithm>`) associated with the simulation. The three drivers are:
+QC Lab comes equipped with three dynamics drivers. These are functions that take a Simulation object (see :ref:`Simulations <simulation>`) as input and carry out the dynamics by executing the recipes of the Algorithm object (see :ref:`Algorithms <algorithm>`) associated with the simulation. The three drivers all live in ``qclab.dynamics`` and are:
 
-- ``serial_driver``: a serial driver that runs the simulation on a single CPU core,
-- ``multiprocessing_driver``: a parallel driver that uses Python's built-in ``multiprocessing`` module to run the simulation on multiple CPU cores,
-- ``mpi_driver``: a parallel driver that uses the ``mpi4py`` package to run the simulation on multiple CPU cores, possibly across multiple nodes.
+- ``qclab.dynamics.serial_driver``: a serial driver that runs the simulation on a single Python process,
+- ``qclab.dynamics.parallel_driver_multiprocessing``: a parallel driver that uses Python's built-in ``multiprocessing`` module to run batches concurrently across CPU cores,
+- ``qclab.dynamics.parallel_driver_mpi``: a parallel driver that uses the ``mpi4py`` package to run batches across MPI ranks (potentially across multiple nodes).
 
 Each driver is responsible for managing the execution of the simulation, including dividing the total number of trajectories into batches (if necessary), distributing the batches across available CPU cores, and collecting the results into a single output Data object. 
 
@@ -40,7 +40,7 @@ Parallel Drivers
 
 The parallel drivers use multiple CPU cores to run batches of trajectories concurrently. This can significantly speed up the simulation, especially for large numbers of trajectories. It is important to recognize that the ``sim.settings.batch_size`` now refers to the number of trajectories that will run on a single CPU core at a time. If you have ``N`` CPU cores available and a batch size of ``B``, then up to ``N*B`` trajectories will be simulated concurrently. Having a ``sim.settings.num_trajs = (N+1)*B`` will have an unnecessary overhead since the last ``B`` trajectories will not be able to run concurrently. For that reason it is recommended to set ``sim.settings.num_trajs`` to be a multiple of ``N*B``.
 
-In addition to the arguments described above, the parallel drivers accept ``ntasks``, an integer specifying the number of parallel tasks to use. If ``ntasks`` is not provided, the parallel drivers will attempt to use each available CPU core as a separate task.
+In addition to the arguments described above, the parallel drivers accept ``num_tasks``, an integer specifying the number of parallel tasks to use. If ``num_tasks`` is ``None`` (the default), the parallel drivers will fall back to ``multiprocessing.cpu_count()`` for the multiprocessing driver, or to the size of ``MPI.COMM_WORLD`` for the MPI driver.
 
 .. autofunction:: qclab.dynamics.parallel_driver_multiprocessing
 

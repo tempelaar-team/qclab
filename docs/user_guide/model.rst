@@ -324,3 +324,198 @@ Tully Problem One
       :linenos:
 
 
+Tully Problem Two
+--------------------------
+
+.. list-table:: Tully Problem Two Model Constants
+   :header-rows: 1
+   :widths: 25 50 25
+
+   * - Constant
+     - Description
+     - Default
+   * - ``init_momentum``
+     - Initial momentum.
+     - 10.0
+   * - ``init_position``
+     - Initial position.
+     - -25.0
+   * - ``mass``
+     - Coordinate mass.
+     - 2000.0
+   * - ``A``
+     - See reference publication.
+     - 0.1
+   * - ``B``
+     - See reference publication.
+     - 0.28
+   * - ``C``
+     - See reference publication.
+     - 0.015
+   * - ``D``
+     - See reference publication.
+     - 0.06
+   * - ``E_0``
+     - See reference publication.
+     - 0.05
+
+.. dropdown:: View full source
+   :icon: code
+
+   .. literalinclude:: ../../src/qclab/models/tully_problem_two.py
+      :language: python
+      :linenos:
+
+
+Tully Problem Three
+--------------------------
+
+.. list-table:: Tully Problem Three Model Constants
+   :header-rows: 1
+   :widths: 25 50 25
+
+   * - Constant
+     - Description
+     - Default
+   * - ``init_momentum``
+     - Initial momentum.
+     - 10.0
+   * - ``init_position``
+     - Initial position.
+     - -25.0
+   * - ``mass``
+     - Coordinate mass.
+     - 2000.0
+   * - ``A``
+     - See reference publication.
+     - 0.0006
+   * - ``B``
+     - See reference publication.
+     - 0.1
+   * - ``C``
+     - See reference publication.
+     - 0.9
+
+.. dropdown:: View full source
+   :icon: code
+
+   .. literalinclude:: ../../src/qclab/models/tully_problem_three.py
+      :language: python
+      :linenos:
+
+
+.. _holstein_lattice_model:
+
+Holstein Lattice Model
+--------------------------
+
+The Holstein lattice model describes an electron on a one-dimensional
+nearest-neighbor tight-binding lattice that is coupled locally to a
+single optical phonon mode at each site. ``HolsteinLattice`` implements
+the model in real space; ``HolsteinLatticeReciprocalSpace`` implements
+the same physics in reciprocal (momentum) space. Both share the same
+user-facing constants.
+
+.. list-table:: Holstein Lattice Model Constants
+   :header-rows: 1
+   :widths: 25 50 25
+
+   * - Constant
+     - Description
+     - Default
+   * - ``kBT``
+     - Thermal energy.
+     - 1.0
+   * - ``g``
+     - Dimensionless electron-phonon coupling.
+     - 0.5
+   * - ``w``
+     - Phonon frequency.
+     - 0.5
+   * - ``N``
+     - Number of lattice sites.
+     - 10
+   * - ``J``
+     - Nearest-neighbor electronic hopping.
+     - 1.0
+   * - ``phonon_mass``
+     - Phonon mass.
+     - 1.0
+   * - ``periodic``
+     - Whether the lattice has periodic boundary conditions.
+     - ``True``
+
+Reference: Krotz et al. *J. Chem. Phys.* **2021**, *154*, 224101.
+https://doi.org/10.1063/5.0053177.
+
+.. dropdown:: View full source
+   :icon: code
+
+   .. literalinclude:: ../../src/qclab/models/holstein_lattice.py
+      :language: python
+      :linenos:
+
+
+Atomistic Ab Initio Model
+--------------------------
+
+The ``AbInitio`` model is a general-purpose atomistic Model that
+forwards quantum-state energies, gradients and derivative couplings to
+an external electronic-structure code. As shipped, the only built-in
+calculator is the Q-Chem interface in
+:mod:`qclab.interfaces.qchem`, but new calculators can be plugged in by
+overriding the ``ab_initio_property_calculator`` ingredient.
+
+The ``AbInitio`` model is intended to be used together with the
+adiabatic-basis algorithms ``MeanFieldAbInitio`` and
+``FewestSwitchesSurfaceHoppingAbInitio``. See :ref:`Ab Initio Dynamics
+<ab-initio>` for a complete description of the workflow.
+
+.. list-table:: AbInitio Model Constants
+   :header-rows: 1
+   :widths: 25 50 25
+
+   * - Constant
+     - Description
+     - Default
+   * - ``atom_positions``
+     - Initial Cartesian positions of every atom (Bohr).
+     - ``None``
+   * - ``atom_masses``
+     - Atomic masses (electron-mass units).
+     - ``None``
+   * - ``atom_names``
+     - List of element symbols.
+     - ``None``
+   * - ``calculator_args``
+     - Keyword arguments forwarded to the electronic-structure calculator.
+     - ``{}``
+   * - ``num_quantum_states``
+     - Number of electronic states tracked by the simulation.
+     - ``None``
+   * - ``normal_mode``
+     - Normal-mode basis used for Wigner sampling of initial conditions.
+     - ``None``
+   * - ``harmonic_frequency``
+     - Normal-mode harmonic frequencies (Hartree).
+     - ``None``
+   * - ``energy_offset``
+     - Constant offset subtracted from the diagonal of ``h_qc`` (Hartree).
+     - 0
+   * - ``kBT``
+     - Thermal energy used for Wigner sampling (Hartree).
+     - 0.00095
+
+.. note::
+
+    The ``AbInitio`` model requires the optional dependency
+    `ASE <https://wiki.fysik.dtu.dk/ase/>`_. If ASE is not installed,
+    the symbol is not exported from ``qclab.models``.
+
+.. dropdown:: View full source
+   :icon: code
+
+   .. literalinclude:: ../../src/qclab/models/ab_initio.py
+      :language: python
+      :linenos:
+

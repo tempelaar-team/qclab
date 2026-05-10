@@ -20,6 +20,7 @@ A Simulation object containing a default mean-field simulation of the spin-boson
 
 .. code-block:: python
 
+    import numpy as np
     from qclab import Simulation
     from qclab.models import SpinBoson
     from qclab.algorithms import MeanField
@@ -27,10 +28,18 @@ A Simulation object containing a default mean-field simulation of the spin-boson
     sim = Simulation()
     sim.model = SpinBoson()
     sim.algorithm = MeanField()
-    sim.initial_state = np.zeros((sim.model.constants.num_quantum_states,), dtype=complex)
-    sim.initial_state[0] = 1.0 + 0.0j 
+    # ``sim.initial_state`` is a dictionary; populate it by key.
+    wf0 = np.zeros(sim.model.constants.num_quantum_states, dtype=complex)
+    wf0[0] = 1.0 + 0.0j
+    sim.initial_state["wf_db"] = wf0
 
-where ``input_settings`` is a dictionary of settings that overwrite the default settings of the simulation described below.
+.. warning::
+
+    ``sim.initial_state`` is a dictionary, not an array. Set the diabatic
+    wavefunction with ``sim.initial_state["wf_db"] = wf0`` rather than
+    ``sim.initial_state = wf0``. The value must be an ``np.ndarray`` with
+    ``dtype=complex``; a Python list will be silently skipped at
+    initialization.
 
 Simulation Settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
