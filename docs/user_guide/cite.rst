@@ -11,9 +11,6 @@ Krotz, A.; Garzón-Ramírez, A. J.; Byrd, E.; Miyazaki, K.; Tempelaar, R.
 Theory Comput. **2026**, *22*, 3144–3152.
 https://doi.org/10.1021/acs.jctc.5c01818.
 
-A released version of QC Lab is also archived on Zenodo at
-https://zenodo.org/doi/10.5281/zenodo.18964248.
-
 BibTeX
 ------
 
