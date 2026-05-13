@@ -2,6 +2,8 @@
 
 This guide reflects the conventions in the existing `src/qclab` source. New code should match them.
 
+For prose written into the QC Lab documentation (Sphinx `.rst` files under `docs/`, the README, or collaborator handouts), the corresponding style file is `documentation_style.md`. Read it before writing or revising documentation.
+
 ## Table of contents
 
 - General Python style

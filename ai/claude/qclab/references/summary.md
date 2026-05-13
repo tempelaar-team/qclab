@@ -40,20 +40,22 @@ A simulation is run by handing a `Simulation` to one of the drivers in `qclab.dy
 
 ## The recipe / task / ingredient pattern
 
-Three-layer split between what the physics is, what the algorithm does, and how each step is implemented:
+QC Lab separates what the physics is, what the algorithm does, and how each time step is implemented across three related concepts:
 
-- **Ingredients** (`ingredients.py`, plus model-specific ones) are functions `f(model, parameters, **kwargs)` that compute physical quantities. They live on the Model as `(name, callable)` tuples. A model declares which ingredients it provides; the same ingredient is reused across models. Ingredient names beginning with `_init_` are special: the Model calls them whenever any constant is changed.
+- **Ingredients** (`ingredients.py`, plus Model-object-specific ones) are functions `f(model, parameters, **kwargs)` that compute physical quantities. They live on the Model object as `(name, callable)` tuples. A Model object declares which ingredients it provides; the same ingredient is reused across Model objects. Ingredient names beginning with `_init_` are special: the Model object calls them whenever any constant is changed.
 
-- **Tasks** (`tasks/`) are functions `task(sim, state, parameters, **opts) -> (state, parameters)`. They read named entries from `state`/`parameters`, call ingredients via `sim.model.get(...)`, and write named entries back. Every task takes `*_name` keyword arguments for key rebinding via `functools.partial`.
+- **Tasks** (`tasks/`) are functions `task(sim, state, parameters, **opts) -> (state, parameters)`. They read named entries from the State and Parameters objects, call ingredients via `sim.model.get(...)`, and write named entries back. Every task takes `*_name` keyword arguments for key rebinding via `functools.partial`.
 
 - **Recipes** are plain Python lists of tasks on the Algorithm class. `Algorithm.execute_recipe` iterates the list and threads `(state, parameters)` through each call.
+
+A new algorithm can often be assembled by reordering existing tasks, but may also require new bespoke tasks. A new Model object can often reuse existing ingredients, but may require new ingredients when the functional form of the physics differs from any built-in ingredient.
 
 ## The dynamics core
 
 `qclab.dynamics.run_dynamics`:
 1. On `t_ind == 0`, run `initialization_recipe`
-2. At every collect step (`t_ind % dt_collect_n == 0`), run `collect_recipe` and call `data.add_output_to_data_dict`
-3. On every step, run `update_recipe`
+2. At every collect time step (`t_ind % dt_collect_n == 0`), run `collect_recipe` and call `data.add_output_to_data_dict`
+3. On every update time step, run `update_recipe`
 
 Drivers build per-batch `state`/`parameters` dicts, run `run_dynamics`, and merge `Data` objects via trajectory-count-weighted `Data.add_data`.
 

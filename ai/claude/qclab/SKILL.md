@@ -1,6 +1,6 @@
 ---
 name: qclab
-description: "QC Lab quantum-classical dynamics simulation skill. Trigger on: QC Lab, qclab, tempelaar-team/qclab, quantum-classical dynamics simulations, spin-boson, Holstein lattice, FMO, Tully problem I/II/III, mean-field, Ehrenfest, fewest-switches surface hopping, FSSH, ab initio FSSH, new model/ingredient/task/algorithm in quantum-classical context, debugging RK4 integration/surface hopping/gauge fixing/trajectory averaging, the complex-classical coordinate formalism (Miyazaki Krotz Tempelaar 2024). Also trigger when the request involves trajectory-based quantum-classical dynamics with complex coordinates, even without explicitly naming QC Lab."
+description: "QC Lab quantum-classical dynamics simulation skill. Trigger on: QC Lab, qclab, tempelaar-team/qclab, quantum-classical dynamics simulations, spin-boson, Holstein lattice, FMO, Tully problem I/II/III, mean-field, Ehrenfest, fewest-switches surface hopping, FSSH, ab initio FSSH, new model/ingredient/task/algorithm in quantum-classical context, debugging RK4 integration/surface hopping/gauge fixing/trajectory averaging, the complex-classical coordinate formalism (Miyazaki Krotz Tempelaar 2024). Also trigger when the request involves trajectory-based quantum-classical dynamics with complex coordinates, even without explicitly naming QC Lab. Trigger as well for any request that writes, revises, audits, or extends QC Lab documentation (Sphinx .rst files under docs/, the README, collaborator handouts) since the skill defines the required documentation style."
 ---
 
 # QC Lab Skill
@@ -19,13 +19,13 @@ QC Lab is a Python package for trajectory-based quantum-classical dynamics simul
 
 ## The recipe / task / ingredient pattern
 
-Every simulation is assembled from three layers:
+Simulations in QC Lab are assembled from ingredients, tasks, and recipes:
 
-- **Ingredients** are physics functions `f(model, parameters, **kwargs)` that compute quantities like Hamiltonians and gradients. They live on the Model as `(slot_name, callable)` tuples. The same ingredient can be shared across models.
-- **Tasks** are algorithm steps `task(sim, state, parameters, **opts) -> (state, parameters)`. They read/write named entries in the `state` dict and call ingredients via `sim.model.get(...)`. Every state key a task touches is exposed as a `*_name` keyword argument.
+- **Ingredients** are physics functions `f(model, parameters, **kwargs)` that compute quantities like Hamiltonians and gradients. They live on the Model object as `(slot_name, callable)` tuples. The same ingredient can be reused across Model objects.
+- **Tasks** are algorithm steps `task(sim, state, parameters, **opts) -> (state, parameters)`. They read and write named entries in the State and Parameters objects and call ingredients via `sim.model.get(...)`. Every State-object key a task touches is exposed as a `*_name` keyword argument.
 - **Recipes** are plain Python lists of tasks on the Algorithm class. `Algorithm.execute_recipe` threads `(state, parameters)` through each task in order.
 
-A new algorithm = a new ordering of existing tasks. A new model = a new ingredient list.
+A new algorithm can often be expressed as a new ordering of existing tasks, but may also require new bespoke tasks (for example, an update task that computes a quantity the existing tasks do not provide). Similarly, a new Model object can often reuse the built-in ingredients but may need new ingredients of its own when the functional form of the physics differs from any ingredient already provided.
 
 ## Decision tree: which reference file to read
 
@@ -33,13 +33,14 @@ A new algorithm = a new ordering of existing tasks. A new model = a new ingredie
 |---|---|
 | Understand the overall architecture or module layout | `references/summary.md` |
 | Write new code that must match QC Lab style (naming, docstrings, module layout) | `references/style_guide.md` |
+| Write or revise documentation prose (Sphinx `.rst`, README, collaborator handouts) | `references/documentation_style.md` |
 | Look up ingredient slot names, state-dict keys, model constants, algorithm settings | `references/conventions.md` |
 | Run a simulation, read Data, add a collect task, do a parameter scan, build a new model | `references/handbook.md` |
 | Open a PR / contribute changes upstream / understand what CI will run | `references/contributing.md` |
 | Answer a question about the QC Lab paper / SI / formalism / cited references | `references/publication.md` |
 | See a complete runnable script | `worked_examples/` — pick the one closest to your task |
 
-For most code-generation requests, read `references/conventions.md` (for the exact key/slot vocabulary) AND `references/handbook.md` (for the recipe to follow). For new-model or new-ingredient work, also read `references/style_guide.md`. For questions about the published paper (Krotz et al., *JCTC* **2026**, *22*, 3144; DOI [10.1021/acs.jctc.5c01818](https://doi.org/10.1021/acs.jctc.5c01818)), start with `references/publication.md` — it covers the formalism, the SI equations, and the architecture-to-code mapping. The full article and supporting information are open access on the JCTC website; link the user there when they need exact wording or primary-source detail.
+For most code-generation requests, read `references/conventions.md` (for the exact key/slot vocabulary) AND `references/handbook.md` (for the recipe to follow). For new-model or new-ingredient work, also read `references/style_guide.md`. For any task that produces or edits documentation prose — whether that's a Sphinx `.rst` file under `docs/`, the README, or an external write-up such as a collaborator handout — read `references/documentation_style.md` before writing. For questions about the published paper (Krotz et al., *JCTC* **2026**, *22*, 3144; DOI [10.1021/acs.jctc.5c01818](https://doi.org/10.1021/acs.jctc.5c01818)), start with `references/publication.md` — it covers the formalism, the SI equations, and the architecture-to-code mapping. The full article and supporting information are open access on the JCTC website; link the user there when they need exact wording or primary-source detail.
 
 ## Critical mistakes to avoid
 
@@ -86,6 +87,20 @@ These are the errors Claude is most likely to make when generating QC Lab code. 
     are a maintainer action. See `references/contributing.md` section 6
     for the full list of operations Claude should not perform without
     explicit confirmation.
+
+20. **Apply the documentation style before writing or revising prose.**
+    Documentation prose under `docs/`, the README, and external
+    write-ups built from the docs follow a specific style described in
+    `references/documentation_style.md`. The recurring failure modes are:
+    addressing "readers" instead of "users"; calling a section a "page";
+    lowercasing the five objects (Simulation, Model, Algorithm,
+    Constants, Data) and the State and Parameters objects; saying
+    "step" when the meaning is "time step"; using a "three layers"
+    framing for the ingredient / task / recipe construction; and
+    making strong design claims of the form "a new algorithm = a new
+    ordering of existing tasks", which is too strong. Read
+    `references/documentation_style.md` before producing any
+    documentation prose.
 
 ## Quick-start template
 
