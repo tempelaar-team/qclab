@@ -4,16 +4,17 @@
 Conventions Reference
 ==========================
 
-This page is the canonical lookup table for every standard name in QC Lab.
-Use it whenever you need to know:
+This section lists the standard names used in QC Lab. It is intended as
+a reference for users who need to know:
 
-- the exact slot name for an ingredient,
-- the exact key under which a quantity lives in the ``state`` or
-  ``parameters`` dict,
-- the exact constant a stock ingredient reads from ``model.constants``, or
-- the exact setting an algorithm understands.
+- the slot name for an ingredient,
+- the key under which a quantity lives in the State object or the
+  Parameters object,
+- the constant a built-in ingredient reads from a Model object's
+  Constants object, or
+- the setting an Algorithm object understands.
 
-Throughout this page we use the shorthand:
+Throughout this section we use the shorthand:
 
 - ``B = sim.settings.batch_size`` — the number of trajectories carried in
   a single batch.
@@ -21,7 +22,7 @@ Throughout this page we use the shorthand:
   in the model.
 - ``N = num_quantum_states`` — the number of quantum states in the model.
 
-The first axis of every state array is always the batch axis.
+The first axis of every State-object array is the batch axis.
 
 ----
 
@@ -30,9 +31,10 @@ Standard ingredient slots
 
 These are the names that algorithms use when calling
 ``sim.model.get(...)``. The first element of each ``(name, callable)``
-tuple in a model's ``ingredients`` list must match one of these (or be an
-``_init_*`` initializer). The signature of every ingredient is
-``f(model, parameters, **kwargs)``.
+tuple in a Model object's ``ingredients`` list must match one of these
+slot names (or be an ``_init_*`` initializer). The signature of every
+ingredient is ``f(model, parameters, **kwargs)``. The list below is
+comprehensive.
 
 .. list-table::
    :header-rows: 1
@@ -87,8 +89,10 @@ tuple in a model's ``ingredients`` list must match one of these (or be an
 -----------------------------------
 
 Names that begin with an underscore are initializers. They are called by
-``Model.initialize_constants`` whenever a constant changes, and their
-purpose is to derive internal constants from the user-facing ones.
+:meth:`Model.initialize_constants <qclab.Model.initialize_constants>`
+whenever a constant changes, and their purpose is to derive internal
+constants from the user-facing ones. The four initializer names used by
+the built-in models are:
 
 - ``_init_model`` — sets sizes (``num_quantum_states``,
   ``num_classical_coordinates``) and per-coordinate metadata
@@ -97,14 +101,19 @@ purpose is to derive internal constants from the user-facing ones.
 - ``_init_h_qc`` — derives constants for the ``h_qc`` ingredient.
 - ``_init_h_c`` — derives constants for the ``h_c`` ingredient.
 
+A Model object can introduce additional ``_init_*`` initializers if
+needed.
+
 ----
 
-Standard state-dict keys
-========================
+Standard State-object keys
+==========================
 
-Keys follow ``lower_snake_case``. Every key listed below is read or
-written by at least one of the built-in tasks, so reusing the standard
-names lets your custom tasks slot in without rebinding.
+Keys follow ``lower_snake_case``. Each key listed below is read or
+written by at least one of the built-in tasks; reusing these names in a
+custom task removes the need to rebind keys when inserting the task into
+an existing recipe. The categories below cover the keys used by the
+built-in tasks. Custom tasks may introduce additional keys.
 
 Trajectory bookkeeping
 ----------------------
@@ -325,16 +334,21 @@ Ab initio extras
 Suffix conventions
 ------------------
 
-- ``_previous`` — value from the prior timestep.
+- ``_previous`` — value from the prior time step.
 - ``_0`` — initial-time reference (e.g. ``dm_adb_0``, ``act_surf_ind_0``).
 - ``_ind`` — integer index (e.g. ``act_surf_ind``, ``traj_ind``).
-- ``_name`` — only used for task keyword arguments whose value is a string
-  key name (e.g. ``z_name="z"``).
+- ``_name`` — only used for task keyword arguments whose value is a
+  string key name (e.g. ``z_name="z"``).
 
 ----
 
-Standard model constants
-========================
+Standard Model-object constants
+===============================
+
+The names below are used by the built-in Model objects and ingredients
+in QC Lab. They are listed by category. A custom Model object may
+introduce additional constants of its own; the entries here are
+representative of the conventions used by the built-in code.
 
 Sizes (always ``num_`` prefix)
 ------------------------------
@@ -360,14 +374,15 @@ Coupling constants (named after the consuming ingredient)
 ---------------------------------------------------------
 
 - ``diagonal_linear_coupling`` — used by ``h_qc_diagonal_linear``.
-- ``nearest_neighbor_hopping_energy``, ``nearest_neighbor_periodic`` — used by
-  ``h_q_nearest_neighbor``.
-- ``two_level_00``, ``two_level_11``, ``two_level_01_re``, ``two_level_01_im`` — used by
-  ``h_q_two_level``.
-- ``coherent_state_displacement`` — used by ``init_classical_wigner_coherent_state``.
+- ``nearest_neighbor_hopping_energy``, ``nearest_neighbor_periodic`` —
+  used by ``h_q_nearest_neighbor``.
+- ``two_level_00``, ``two_level_11``, ``two_level_01_re``,
+  ``two_level_01_im`` — used by ``h_q_two_level``.
+- ``coherent_state_displacement`` — used by
+  ``init_classical_wigner_coherent_state``.
 
-Atomistic / ab initio
----------------------
+Atomistic and ab initio constants
+---------------------------------
 
 - ``atom_names``
 - ``atom_masses``
@@ -388,12 +403,17 @@ Numerical tuning knobs (``<consumer>_<knob>``)
 User-facing physical constants (conventional symbols)
 -----------------------------------------------------
 
-- ``kBT``, ``V``, ``E``, ``A``, ``W``, ``J``, ``N``, ``g``, ``w``, ``l_reorg``, ``w_c``
+- ``kBT``, ``V``, ``E``, ``A``, ``W``, ``J``, ``N``, ``g``, ``w``,
+  ``l_reorg``, ``w_c``
 
 ----
 
-Standard algorithm settings
-===========================
+Standard Algorithm-object settings
+==================================
+
+The settings below are the ones recognized by the built-in Algorithm
+objects. The list is comprehensive for the built-in algorithms; a
+custom Algorithm object may introduce additional settings of its own.
 
 .. list-table::
    :header-rows: 1
@@ -466,16 +486,20 @@ Boolean flags start with ``use_`` or ``is_``; mode strings are descriptive
 
 ----
 
-Local variable names allowed in physics code
-============================================
+Local variable names in physics code
+====================================
 
-The following short names are accepted in ingredient and task bodies
-without further explanation:
+The following short names appear in the bodies of the built-in
+ingredients and tasks. Reusing them in custom code keeps new functions
+visually consistent with the existing ones. The list is representative
+of the conventions used in the built-in code.
 
 - coordinates: ``z``, ``q``, ``p``
-- per-coordinate quantities: ``m`` (mass), ``h`` (weight), ``w`` (frequency)
+- per-coordinate quantities: ``m`` (mass), ``h`` (weight),
+  ``w`` (frequency)
 - thermal energy: ``kBT``
-- eigenpairs: ``evec_i``, ``evec_j``, ``eval_i``, ``eval_j``, ``eigval_diff``
+- eigenpairs: ``evec_i``, ``evec_j``, ``eval_i``, ``eval_j``,
+  ``eigval_diff``
 - sparse triple (always in this order): ``inds``, ``mels``, ``shape``
 - sizes: ``batch_size``, ``num_classical_coordinates``,
   ``num_quantum_states``

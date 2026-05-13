@@ -7,46 +7,45 @@ Data
 Data Objects
 ---------------------------
 
-Data objects are instances of the ``qclab.data.Data`` class and are used
-to store and manage the results of a simulation. They provide methods
-for collecting, processing, and saving data, as well as capturing
-in-memory log output produced during a simulation.
+Data objects are instances of the ``qclab.data.Data`` class and are
+used to store and manage the results of a simulation. They provide
+methods for collecting, processing, and saving data, and they capture
+log output produced during a simulation.
 
-In general, a Data object has the following attributes:
+A Data object has the following attributes:
 
-- ``data_dict``: a dictionary that stores the results of the simulation.
-  Each key in the dictionary corresponds to a specific quantity that was
-  collected during the simulation, and the value is an array containing
-  the values of that quantity averaged over the trajectories. Two
-  bookkeeping keys are always present: ``"seed"`` (the array of
-  trajectory seeds that contributed to the average) and
-  ``"norm_factor"`` (the running denominator used by ``add_data`` to
-  perform a trajectory-count-weighted merge).
-- ``log``: a string that stores any log messages emitted during the
-  simulation. The drivers populate this attribute by draining the
+- ``data_dict``: a dictionary that stores the results of the
+  simulation. Each key corresponds to a quantity collected during the
+  simulation, and the value is an array containing the trajectory-
+  averaged values of that quantity. Two bookkeeping keys are always
+  present: ``"seed"`` (the array of trajectory seeds that contributed
+  to the average) and ``"norm_factor"`` (the denominator used by
+  ``add_data`` to perform a trajectory-count-weighted merge).
+- ``log``: a string that stores log messages emitted during the
+  simulation. The drivers populate this attribute by reading from the
   in-memory log stream configured by
   :func:`qclab.utils.configure_memory_logger` once the simulation has
   finished.
 
-Data objects provide several methods for managing and processing the
-data they contain.
+Data objects provide methods for managing and processing the data they
+contain.
 
-- ``add_output_to_data_dict``: the public hook called by
-  :func:`qclab.dynamics.run_dynamics` at every collect step. It merges
-  ``state["output_dict"]`` into ``data_dict``, broadcasting new keys to
-  the full ``(n_collect, ...)`` time axis on the first occurrence and
-  averaging the per-batch sum by the ``norm_factor``.
+- ``add_output_to_data_dict``: the hook called by
+  :func:`qclab.dynamics.run_dynamics` at every collect time step. It
+  merges ``state["output_dict"]`` into ``data_dict``, broadcasting new
+  keys to the full ``(n_collect, ...)`` time axis on the first
+  occurrence and dividing the per-batch sum by the ``norm_factor``.
 - ``add_data``: merges another Data object into this one using a
-  trajectory-count-weighted average of every collected quantity. This is
-  what the drivers call to combine batches and what users call when
-  stitching multiple runs of the same simulation together.
-- ``save``: serialises ``data_dict`` and ``log`` to disk. Uses HDF5
-  (via ``h5py``) when available; falls back to ``numpy.savez`` when
+  trajectory-count-weighted average of every collected quantity. The
+  drivers call this method to combine batches, and users can call it to
+  stitch multiple runs of the same simulation together.
+- ``save``: writes ``data_dict`` and ``log`` to disk. Uses HDF5 (via
+  ``h5py``) when available; falls back to ``numpy.savez`` when
   ``h5py`` is not installed (``qclab.utils.DISABLE_H5PY``).
-- ``load``: deserialises a Data file from disk *into the current Data
-  object*. The loaded data is merged in via ``add_data``, so loading
-  on top of a non-empty Data object accumulates trajectories rather
-  than overwriting them.
+- ``load``: reads a Data file from disk into the current Data object.
+  The loaded data is merged in via ``add_data``, so loading on top of a
+  non-empty Data object accumulates trajectories rather than
+  overwriting them.
 
 These methods are documented here:
 
@@ -57,16 +56,15 @@ These methods are documented here:
 
 .. note::
 
-    ``add_data`` performs a *weighted* merge: for every collected key
+    ``add_data`` performs a weighted merge: for every collected key
     other than ``"seed"`` and ``"norm_factor"``, the merged value is
     ``(d1 * n1 + d2 * n2) / (n1 + n2)``, where ``n1`` and ``n2`` are
     the ``norm_factor`` values of the two Data objects (typically the
-    number of trajectories that contributed). This means it is safe to
-    stitch together runs with different batch sizes — but it also means
-    that merging hand-edited Data objects with mismatched
-    ``norm_factor`` values is a common source of confusion. If you
-    find yourself manually editing ``norm_factor``, you probably want
-    to construct a fresh Data object instead.
+    number of trajectories that contributed). This makes it possible
+    to stitch together runs with different batch sizes. Manually
+    editing ``norm_factor`` on a Data object will produce an incorrect
+    weighted average; in such a case it is preferable to construct a
+    fresh Data object.
 
 Saving and loading
 ~~~~~~~~~~~~~~~~~~
@@ -82,9 +80,9 @@ A simulation's output can be saved to disk and reloaded later:
     from qclab import Data
     reloaded = Data().load("results.h5")
 
-If you load an existing Data file on top of a non-empty Data object,
-the result is merged — useful when accumulating large simulations from
-periodic checkpoint files:
+Loading an existing Data file on top of a non-empty Data object merges
+the two via ``add_data``. This is useful when accumulating large
+simulations from periodic checkpoint files:
 
 .. code-block:: python
 

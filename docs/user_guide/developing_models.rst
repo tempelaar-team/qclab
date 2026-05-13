@@ -4,47 +4,46 @@
 Developing Models and Ingredients
 ==========================================
 
-This page is a guided tour for users who want to add new physics to
-QC Lab — either by tweaking an existing model or by writing a new one
-from scratch. Read it after :ref:`Ingredients <ingredient>` and
-:ref:`Models <model>`, both of which describe what the building blocks
-look like in isolation.
+This section describes how to add new physics to QC Lab by either
+adapting an existing Model object or writing a new one. It is intended
+to be read after the :ref:`Ingredients <ingredient>` and :ref:`Models
+<model>` sections, which describe what the building blocks look like
+in isolation.
 
-Decision tree: subclass an existing model, or write a new one?
-==============================================================
+When to subclass an existing Model object
+=========================================
 
-Before writing a new ingredient, check whether the change you want can
-be expressed as a different set of *constants* on top of the existing
-parametric ingredients. The stock ingredients in :mod:`qclab.ingredients`
-are intentionally generic:
+Before writing a new ingredient, it is worth checking whether the
+desired change can be expressed by changing a Model object's constants
+on top of the existing ingredients. Several of the built-in ingredients
+in :mod:`qclab.ingredients` are parametric and can accommodate a range
+of physical settings without modification.
 
-- ``h_qc_diagonal_linear`` works for *any* ``diagonal_linear_coupling``
+For example:
+
+- ``h_qc_diagonal_linear`` works for any ``diagonal_linear_coupling``
   matrix.
-- ``h_c_harmonic`` works for *any* ``harmonic_frequency`` array.
-- ``h_q_two_level`` works for *any* two-level Hamiltonian set by
-  ``two_level_00``, ``two_level_11``, ``two_level_01_re`` /
+- ``h_c_harmonic`` works for any ``harmonic_frequency`` array.
+- ``h_q_two_level`` works for any two-level Hamiltonian set by
+  ``two_level_00``, ``two_level_11``, ``two_level_01_re``, and
   ``two_level_01_im``.
 
-If the *functional form* of the physics stays the same and only the
-*distribution of parameters* changes, you do not need a new ingredient.
-Subclass the existing model and override the relevant ``_init_*``
-methods.
-
-If the functional form genuinely changes — for instance, off-diagonal
-coupling where only diagonal coupling exists, or a position-dependent
-coupling where only linear coupling exists — write a new ingredient.
-
-A useful test: if your new physics can be described by the existing
-ingredient's docstring, modify constants. If it cannot, write a new
-ingredient.
+When the functional form of the physics is the same as that of an
+existing ingredient and only the distribution of parameters changes,
+subclassing an existing Model object and overriding the relevant
+``_init_*`` methods is often sufficient. When the functional form is
+different — for example, off-diagonal coupling where only diagonal
+coupling exists, or a position-dependent coupling where only a linear
+coupling exists — a new ingredient is required.
 
 Example: subclassing for a different spectral density
 -----------------------------------------------------
 
 A spin-boson model with a Debye spectral density still uses
-``h_qc_diagonal_linear`` and ``h_c_harmonic``. Only the way the
+``h_qc_diagonal_linear`` and ``h_c_harmonic``; only the way the
 ``harmonic_frequency`` and ``diagonal_linear_coupling`` arrays are
-populated changes. A subclass is sufficient:
+populated changes. A subclass of :class:`~qclab.models.SpinBoson` that
+overrides the corresponding initializers is sufficient:
 
 .. code-block:: python
 
@@ -90,57 +89,63 @@ populated changes. A subclass is sufficient:
                 g / np.sqrt(2.0 * boson_mass * h)
             )
 
-The ingredient list is inherited from ``SpinBoson``; the subclass only
-swaps in the new initializer logic.
+The ingredient list is inherited from
+:class:`~qclab.models.SpinBoson`; only the initializer logic is changed.
 
 ----
 
-The new-model checklist
-=======================
+A new Model object from scratch
+===============================
 
-When the functional form of the physics is genuinely new, write a new
-``Model`` subclass. The minimum viable model satisfies the following
-checklist:
+When the functional form of the physics differs from any of the
+ingredients shipped with QC Lab, a new Model object is needed. The
+items below summarize what such a Model object needs to provide.
 
-#. **Subclass** :class:`qclab.Model`. Place the file in
-   ``src/qclab/models/`` if you intend to upstream it; a self-contained
-   file outside the package is fine for prototyping.
-#. **Set ``default_constants``** in ``__init__`` and forward them via
+#. **Subclass** :class:`qclab.Model`. The file can live in
+   ``src/qclab/models/`` if it is intended to be upstreamed; a
+   self-contained file outside the package is fine otherwise.
+#. **Set** ``default_constants`` in ``__init__`` and forward them via
    ``super().__init__(self.default_constants, constants)``.
 #. **Set the performance flags** ``self.update_h_q`` and
    ``self.update_dh_qc_dzc`` to ``False`` if those quantities do not
-   depend on ``z`` (a significant speedup) and to ``True`` otherwise.
-#. **Provide an ``_init_model`` initializer** that derives the mandatory
-   constants ``num_quantum_states``, ``num_classical_coordinates``,
-   ``classical_coordinate_mass``, and ``classical_coordinate_weight``.
-   Optional ``_init_h_q`` / ``_init_h_qc`` / ``_init_h_c`` initializers
-   can be added to derive ingredient-specific constants.
-#. **Define an ``ingredients`` class attribute** that lists the
+   depend on the classical coordinate ``z`` and to ``True`` otherwise.
+   Setting either flag to ``False`` when the underlying quantity does
+   depend on ``z`` produces a stale cache and incorrect results.
+#. **Provide an** ``_init_model`` **initializer** that derives the
+   mandatory constants ``num_quantum_states``,
+   ``num_classical_coordinates``, ``classical_coordinate_mass``, and
+   ``classical_coordinate_weight``. Optional ``_init_h_q``,
+   ``_init_h_qc``, ``_init_h_c`` initializers can be added to derive
+   ingredient-specific constants.
+#. **Define an** ``ingredients`` **class attribute** that lists the
    ingredients the model uses, including the ``_init_*`` initializers.
-   Reuse stock ingredients from :mod:`qclab.ingredients` where possible.
-#. **Vectorize new ingredients** over the batch axis. Either hand-code
+   Reuse ingredients from :mod:`qclab.ingredients` whenever an existing
+   ingredient covers the desired physics.
+#. **Vectorize new ingredients over the batch axis.** Either hand-code
    the ``(B, ...)`` shape or use the
    :func:`~qclab.functions.vectorize_ingredient` decorator from
    :mod:`qclab.functions`.
-#. **Make sparse gradients return ``(inds, mels, shape)``** in that
-   order; ``inds`` should come from ``np.where`` on a dense array. See
-   :ref:`Sparse Quantum-Classical Gradients <ingredient>`.
-#. **Cite a reference** in the class docstring, when relevant.
+#. **Return sparse gradients as** ``(inds, mels, shape)`` in that
+   order. ``inds`` should come from ``np.where`` on a dense array. See
+   the :ref:`Ingredients <ingredient>` section for details.
+#. **Cite the reference** for the physics in the class docstring when
+   one exists.
 
-Use :class:`~qclab.models.SpinBoson` and
-:class:`~qclab.models.HolsteinLattice` as canonical examples.
+:class:`~qclab.models.SpinBoson` and
+:class:`~qclab.models.HolsteinLattice` cover the case of a many-mode
+harmonic bath; :class:`~qclab.models.TullyProblemOne` covers a
+single-coordinate scattering problem. Both can be used as a starting
+template.
 
 ----
 
-Worked example: a linear vibronic coupling (LVC) model
-======================================================
+Example: a linear vibronic coupling model
+=========================================
 
 The example below assembles a two-state, two-mode linear-vibronic-coupling
-model with a conical intersection. The point of the example is to walk
-through every step of the new-model checklist. It does not use
-``init_classical_wigner_coherent_state`` or any other off-the-shelf
-sampler that requires extra constants — the focus is on the model and
-its ingredients, not on initial conditions.
+model with a conical intersection. It shows the workflow described
+above and is intended as a worked example, not a reference
+implementation.
 
 .. code-block:: python
 
@@ -152,7 +157,7 @@ its ingredients, not on initial conditions.
     from qclab.algorithms import MeanField
     from qclab.dynamics import serial_driver
 
-    # ------------------- novel ingredients ------------------------------
+    # ---- novel ingredients ----------------------------------------------
 
     @functions.vectorize_ingredient
     def h_qc_lvc(model, parameters, **kwargs):
@@ -205,7 +210,7 @@ its ingredients, not on initial conditions.
         out[1, 1, 0] = np.conj(out[1, 0, 1])
         return out
 
-    # ------------------- the Model class --------------------------------
+    # ---- the Model class ------------------------------------------------
 
     class LinearVibronicCoupling(Model):
         """Two-state, two-mode linear vibronic coupling model.
@@ -264,7 +269,7 @@ its ingredients, not on initial conditions.
             ("_init_model",    _init_model),
         ]
 
-    # ------------------- run --------------------------------------------
+    # ---- run ------------------------------------------------------------
 
     sim = Simulation({
         "tmax": 30.0, "dt_update": 0.005, "dt_collect": 0.1,
@@ -277,33 +282,27 @@ its ingredients, not on initial conditions.
 
 The sparse gradient is implemented analytically and decorated with
 ``@make_ingredient_sparse``, so QC Lab does not fall back to
-finite-difference gradients. Note that ``update_h_q`` and
-``update_dh_qc_dzc`` are both ``False`` because neither depends on
-``z`` after the constants are derived.
+finite-difference gradients. Both performance flags ``update_h_q`` and
+``update_dh_qc_dzc`` are set to ``False`` because the corresponding
+quantities do not depend on ``z`` once the constants are derived.
 
 ----
 
-Things to double-check
-======================
+Common sources of incorrect results
+===================================
 
-When debugging a new model, the following are the most common sources of
-incorrect results:
+When debugging a new Model object, the following are recurring sources
+of incorrect results. The list is representative, not exhaustive.
 
-- Forgetting to set ``classical_coordinate_weight`` — the complex
-  coordinate ``z`` is not well-defined without it.
+- Forgetting to set ``classical_coordinate_weight``. The complex
+  coordinate ``z`` is not well defined without it.
 - Returning a dense gradient from ``dh_qc_dzc`` instead of the sparse
   ``(inds, mels, shape)`` triple. Wrap with
   :func:`~qclab.functions.make_ingredient_sparse` to convert
   automatically, or build the indices manually with ``np.where``.
-- Setting ``update_dh_qc_dzc = False`` on a model whose gradient does
-  depend on a constant that you intend to vary at runtime; the cached
-  gradient becomes stale.
-- Hard-coding the batch size from ``len(z)`` rather than reading
-  ``sim.settings.batch_size``. ``len(z)`` is correct in ingredients
-  (which see only ``model``, ``parameters``, ``kwargs``), but tasks
-  must use ``sim.settings.batch_size``.
-
-When in doubt, look at how :class:`~qclab.models.SpinBoson` and
-:class:`~qclab.models.TullyProblemOne` are written. They cover the two
-common cases: a many-mode harmonic bath and a single-coordinate scattering
-problem.
+- Setting ``update_dh_qc_dzc = False`` on a model whose gradient depends
+  on a constant that is varied at runtime. The cached gradient becomes
+  stale.
+- Reading the batch size from ``len(z)`` rather than from
+  ``sim.settings.batch_size`` inside a task. The latter is the
+  canonical source of the batch size in a task body.

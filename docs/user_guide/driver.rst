@@ -5,11 +5,11 @@ Drivers
 ==========================
 
 
-QC Lab comes equipped with three dynamics drivers. These are functions that take a Simulation object (see :ref:`Simulations <simulation>`) as input and carry out the dynamics by executing the recipes of the Algorithm object (see :ref:`Algorithms <algorithm>`) associated with the simulation. The three drivers all live in ``qclab.dynamics`` and are:
+QC Lab comes equipped with three dynamics drivers. These are functions that take a Simulation object (see :ref:`Simulations <simulation>`) as input and carry out the dynamics by executing the recipes of the Algorithm object (see :ref:`Algorithms <algorithm>`) associated with the Simulation object. The three drivers all live in ``qclab.dynamics`` and are:
 
-- ``qclab.dynamics.serial_driver``: a serial driver that runs the simulation on a single Python process,
+- ``qclab.dynamics.serial_driver``: a serial driver that runs the simulation in a single Python process,
 - ``qclab.dynamics.parallel_driver_multiprocessing``: a parallel driver that uses Python's built-in ``multiprocessing`` module to run batches concurrently across CPU cores,
-- ``qclab.dynamics.parallel_driver_mpi``: a parallel driver that uses the ``mpi4py`` package to run batches across MPI ranks (potentially across multiple nodes).
+- ``qclab.dynamics.parallel_driver_mpi``: a parallel driver that uses the ``mpi4py`` package to run batches across MPI ranks, possibly across multiple nodes.
 
 Each driver is responsible for managing the execution of the simulation, including dividing the total number of trajectories into batches (if necessary), distributing the batches across available CPU cores, and collecting the results into a single output Data object. 
 

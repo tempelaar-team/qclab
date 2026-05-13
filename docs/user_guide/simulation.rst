@@ -35,11 +35,11 @@ A Simulation object containing a default mean-field simulation of the spin-boson
 
 .. warning::
 
-    ``sim.initial_state`` is a dictionary, not an array. Set the diabatic
-    wavefunction with ``sim.initial_state["wf_db"] = wf0`` rather than
-    ``sim.initial_state = wf0``. The value must be an ``np.ndarray`` with
-    ``dtype=complex``; a Python list will be silently skipped at
-    initialization.
+    ``sim.initial_state`` is a dictionary, not an array. The diabatic
+    wavefunction is set by assigning to a dictionary key, as in
+    ``sim.initial_state["wf_db"] = wf0``. The value must be a NumPy
+    ``ndarray`` with ``dtype=complex``; a Python list is silently
+    skipped at initialization.
 
 Simulation Settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

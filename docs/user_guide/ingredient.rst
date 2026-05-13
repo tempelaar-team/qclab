@@ -27,7 +27,7 @@ A generic ingredient has the form:
 
 where ``model`` is a Model object which contains all the constants of the model, ``parameters`` is a dictionary containing time-dependent parameters of the simulation, and ``**kwargs`` are any additional keyword arguments that are specific to that ingredient type.
 
-The full set of standard slot names, the keyword arguments each one consumes, and the shape of its return value are listed in :ref:`Conventions <conventions>`. The most commonly used slots are summarised here:
+The full set of standard slot names, the keyword arguments each one consumes, and the shape of its return value are listed in the :ref:`Conventions <conventions>` section. The slots used by the built-in algorithms are summarized here:
 
 .. list-table:: Standard ingredient slots
    :header-rows: 1

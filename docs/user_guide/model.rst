@@ -410,10 +410,10 @@ Holstein Lattice Model
 --------------------------
 
 The Holstein lattice model describes an electron on a one-dimensional
-nearest-neighbor tight-binding lattice that is coupled locally to a
-single optical phonon mode at each site. ``HolsteinLattice`` implements
-the model in real space; ``HolsteinLatticeReciprocalSpace`` implements
-the same physics in reciprocal (momentum) space. Both share the same
+nearest-neighbor tight-binding lattice coupled locally to a single
+optical phonon mode at each site. ``HolsteinLattice`` implements the
+model in real space; ``HolsteinLatticeReciprocalSpace`` implements the
+same physics in reciprocal (momentum) space. The two share the same
 user-facing constants.
 
 .. list-table:: Holstein Lattice Model Constants
@@ -459,17 +459,17 @@ https://doi.org/10.1063/5.0053177.
 Atomistic Ab Initio Model
 --------------------------
 
-The ``AbInitio`` model is a general-purpose atomistic Model that
-forwards quantum-state energies, gradients and derivative couplings to
-an external electronic-structure code. As shipped, the only built-in
-calculator is the Q-Chem interface in
-:mod:`qclab.interfaces.qchem`, but new calculators can be plugged in by
-overriding the ``ab_initio_property_calculator`` ingredient.
+The ``AbInitio`` Model object is an atomistic Model object that
+forwards quantum-state energies, gradients, and derivative couplings to
+an external electronic-structure code. The only calculator shipped with
+QC Lab is the Q-Chem interface in :mod:`qclab.interfaces.qchem`; other
+calculators can be used by overriding the ``ab_initio_property_calculator``
+ingredient.
 
-The ``AbInitio`` model is intended to be used together with the
+The ``AbInitio`` Model object is intended to be used together with the
 adiabatic-basis algorithms ``MeanFieldAbInitio`` and
-``FewestSwitchesSurfaceHoppingAbInitio``. See :ref:`Ab Initio Dynamics
-<ab-initio>` for a complete description of the workflow.
+``FewestSwitchesSurfaceHoppingAbInitio``. See the :ref:`Ab Initio
+Dynamics <ab-initio>` section for a description of the workflow.
 
 .. list-table:: AbInitio Model Constants
    :header-rows: 1

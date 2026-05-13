@@ -5,9 +5,9 @@ Numerical Constants
 ==============================
 
 The :mod:`qclab.numerical_constants` module collects numerical
-thresholds and unit-conversion factors used throughout QC Lab. Models
-and ingredients are expected to read these values rather than hard-code
-magic numbers in their bodies.
+thresholds and unit-conversion factors used by QC Lab. Built-in Model
+objects and ingredients read these values rather than embedding the
+numbers directly.
 
 Values for the underlying physical constants are taken from the 2022
 CODATA recommended values (Mohr et al., *Rev. Mod. Phys.* **97**,
@@ -39,21 +39,23 @@ Numerical thresholds
        ``dh_c_dzc`` and ``dh_qc_dzc`` when no analytical gradient
        ingredient is provided.
 
-These thresholds are deliberately exposed as module-level constants so
-that they can be tuned per-model; ingredients that need a different
-finite-difference step size, for example, can read
-``model.constants.dh_c_dzc_finite_difference_delta`` instead and
-override the default.
+These thresholds are exposed as module-level constants so that they
+can be tuned per-model. For example, ingredients that need a different
+finite-difference step size can read
+``model.constants.dh_c_dzc_finite_difference_delta`` from the Model
+object's Constants object instead, overriding the default.
 
 ----
 
 Unit conversions
 ================
 
-QC Lab does not enforce a single unit system; each model documents the
-units of its own constants. The conversions listed below are the ones
-used by the built-in models (``FMOComplex``, ``AbInitio``) and by the
-Q-Chem interface, and are convenient when assembling new models.
+QC Lab does not enforce a single unit system; each Model object
+documents the units of its own constants. The conversions listed below
+are those used by the built-in Model objects (``FMOComplex``,
+``AbInitio``) and by the Q-Chem interface; they are available for use
+when assembling new Model objects. The list is comprehensive for the
+unit-conversion factors defined in the module.
 
 .. list-table::
    :header-rows: 1
@@ -89,12 +91,11 @@ Q-Chem interface, and are convenient when assembling new models.
 Reference-temperature unit system
 =================================
 
-A handful of QC Lab models — most prominently
-:class:`~qclab.models.FMOComplex` — express all energies as multiples of
-the thermal energy at a reference temperature of 300 K, with the
-corresponding time unit ``hbar / kBT(300 K) ≈ 25.46 fs``. The conversion
-factor between wavenumbers and that reference unit is exposed under two
-names:
+Some Model objects, including :class:`~qclab.models.FMOComplex`,
+express all energies as multiples of the thermal energy at a reference
+temperature of 300 K, with the corresponding time unit
+``hbar / kBT(300 K) ≈ 25.46 fs``. The conversion factor between
+wavenumbers and that reference unit is exposed under two names:
 
 .. list-table::
    :header-rows: 1

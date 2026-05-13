@@ -50,8 +50,8 @@ using finite differences.
 Now we can run the simulation with the new coupling term and compare the results to the previous simulation.
 You'll notice a small decrease in the performance of the simulation due to the numerical calculation of the gradients.
 If you'd like to speed up the simulation, you can implement an analytical gradient for the new coupling term by following the
-:ref:`model development guide <developing-models>`. The :ref:`Sparse Quantum-Classical Gradients <ingredient>` section also covers
-the analytical-gradient pattern.
+:ref:`Developing Models and Ingredients <developing-models>` section. The :ref:`Ingredients <ingredient>` section also covers
+the sparse analytical-gradient pattern.
 
 
 .. image:: fssh_lreorg_inv_vel_offdiag.png
