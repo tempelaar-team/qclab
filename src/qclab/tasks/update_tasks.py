@@ -596,13 +596,16 @@ def update_eigvecs_gauge(
     eigvals_name: str = "eigvals",
     eigvecs_name: str = "eigvecs",
     eigvecs_previous_name: str = "eigvecs_previous",
-    output_eigvecs_name: str = "eigvecs_name",
+    output_eigvecs_name: str = "eigvecs",
     z_name: str = "z",
     gauge_fixing: str = None,
     dh_qc_dzc_name: str = "dh_qc_dzc",
 ):
     """
     Updates the gauge of the eigenvectors as specified by the gauge_fixing parameter.
+
+    Note that as implemented both state[eigvecs_name] and state[output_eigvecs_name] 
+    will be updated with the gauge-fixed eigenvectors. This is a known issue and will be fixed in a future release.
 
 
     if gauge_fixing == "sign_overlap":
