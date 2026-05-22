@@ -2545,11 +2545,7 @@ def update_p_velocity_verlet(
         None, f_previous, m[np.newaxis], h[np.newaxis]
     )
     f = classical_force + quantum_classical_force
-    f_previous = classical_force_previous + quantum_classical_force_previous
     f_dq, _ = functions.dzdzc_to_dqdp(None, f, m[np.newaxis], h[np.newaxis])
-    f_dq_previous, _ = functions.dzdzc_to_dqdp(
-        None, f_previous, m[np.newaxis], h[np.newaxis]
-    )
     p_dt = p - 0.5 * (f_dq + f_dq_previous) * dt_update
     q_dt = functions.z_to_q(z, m[np.newaxis], h[np.newaxis])
     z_dt = functions.qp_to_z(q_dt, p_dt, m[np.newaxis], h[np.newaxis])
