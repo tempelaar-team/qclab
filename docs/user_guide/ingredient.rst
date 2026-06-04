@@ -4,16 +4,16 @@
 Ingredients
 ==========================
 
-Ingredients are functions that encode the physics of a model. QC Lab is designed to be operational with a minimal set of ingredients that describe the Hamiltonian of the system which is assumed to have the form:
+Ingredients are functions that encode the physics of a Model object. QC Lab is designed to be operational with a minimal set of Ingredients that describe the Hamiltonian of the system which is assumed to have the form:
 
 .. math::
 
     H(q,p) = \hat{H}_{\mathrm{q}} + \hat{H}_{\mathrm{q-c}}(q) + H_{\mathrm{c}}(q,p)
 
-where :math:`\hat{H}_\mathrm{q}` is the quantum Hamiltonian, :math:`\hat{H}_{\mathrm{q-c}}(q)` is the quantum-classical coupling Hamiltonian, and :math:`H_{\mathrm{c}}(q,p)` is the classical Hamiltonian. 
-As discussed in the :ref:`Model <model>` section, models defined in an adiabatic basis also provide the derivative coupling tensor :math:`d^{n}_{ij}(q)=\langle i(q)\vert\partial_{n}\vert j(q)\rangle`.
+where :math:`\hat{H}_\mathrm{q}` is the quantum Hamiltonian, :math:`\hat{H}_{\mathrm{q-c}}(q)` is the quantum-classical interaction Hamiltonian, and :math:`H_{\mathrm{c}}(q,p)` is the classical Hamiltonian.
+As discussed in the :ref:`Model <model>` section, Model objects defined in an adiabatic basis also provide the derivative coupling tensor :math:`d^{\xi}_{\alpha\beta}(q)=\langle \alpha(q)\vert\frac{\partial}{\partial q_{\xi}}\vert \beta(q)\rangle`.
 
-A generic ingredient has the form:
+A generic Ingredient has the form:
 
 .. code-block:: python
 
@@ -25,66 +25,13 @@ A generic ingredient has the form:
         # Return the computed ingredient.
         return ingredient
 
-where ``model`` is a Model object which contains all the constants of the model, ``parameters`` is a dictionary containing time-dependent parameters of the simulation, and ``**kwargs`` are any additional keyword arguments that are specific to that ingredient type.
+where ``model`` is a Model object which contains all the constants of the Model object, ``parameters`` is the Parameters object containing time-dependent parameters of the simulation, and ``**kwargs`` are any additional keyword arguments that are specific to that Ingredient type.
 
-The full set of standard slot names, the keyword arguments each one consumes, and the shape of its return value are listed in the :ref:`Conventions <conventions>` section. The slots used by the built-in algorithms are summarized here:
-
-.. list-table:: Standard ingredient slots
-   :header-rows: 1
-   :widths: 22 28 30 20
-
-   * - Slot
-     - Required kwargs
-     - Returns
-     - Used by
-   * - ``h_q``
-     - ``batch_size``
-     - ``(B, N, N)`` complex Hamiltonian
-     - every algorithm
-   * - ``h_qc``
-     - ``z``
-     - ``(B, N, N)`` complex Hamiltonian
-     - every algorithm
-   * - ``h_c``
-     - ``z``
-     - ``(B,)`` real classical energy
-     - mean-field, FSSH
-   * - ``dh_qc_dzc``
-     - ``z``
-     - sparse ``(inds, mels, shape)`` for ``(B, C, N, N)``
-     - every algorithm; falls back to finite differences if absent
-   * - ``dh_c_dzc``
-     - ``z``
-     - ``(B, C)`` complex gradient
-     - every algorithm; falls back to finite differences if absent
-   * - ``init_classical``
-     - ``seed``
-     - ``(B, C)`` complex initial coordinates
-     - every algorithm; falls back to MCMC if absent
-   * - ``hop``
-     - ``z``, ``resc_dir_z``, ``eigval_diff``
-     - ``(shift, hop_bool)``
-     - FSSH only
-   * - ``derivative_coupling_dzc``
-     - ``z``
-     - ``(B, C, N, N)`` complex
-     - ab initio only
-   * - ``gauge_field_force``
-     - ``z``, ``state_ind``
-     - ``(B, C)`` complex
-     - optional, when ``use_gauge_field_force == True``
-   * - ``ab_initio_property_calculator``
-     - ``property_dict``, ``traj_ind``
-     - dict of energies / gradients / couplings
-     - ab initio only
-
-Here ``B = sim.settings.batch_size``, ``C = num_classical_coordinates`` and ``N = num_quantum_states``.
-
-Ingredients in QC lab can come in different variations, for example the quantum Hamiltonian ingredient could describe a two-level system, a nearest-neighbor lattice, or a more complicated Hamiltonian. The type and variety of an ingredient is specified in its name which follows the convention ``<ingredient_type>_<variety>``. For example, the quantum Hamiltonian ingredient for a two-level system is named ``h_q_two_level`` where ``h_q`` indicates that it is a quantum Hamiltonian ingredient and ``two_level`` indicates that it describes a two-level system. Likewise the classical Hamiltonian ingredient for a harmonic oscillator is named ``h_c_harmonic`` where ``h_c`` indicates that it is a classical Hamiltonian ingredient and ``harmonic`` indicates that it describes a harmonic oscillator.
+Ingredients in QC Lab can come in different variations, for example the quantum Hamiltonian Ingredient could describe a two-level system, a nearest-neighbor lattice, or a more complicated Hamiltonian. The type and variety of an Ingredient is specified in its name which follows the convention ``<ingredient_type>_<variety>``. For example, the quantum Hamiltonian Ingredient for a two-level system is named ``h_q_two_level`` where ``h_q`` indicates that it is a quantum Hamiltonian Ingredient and ``two_level`` indicates that it describes a two-level system. Likewise the classical Hamiltonian Ingredient for a harmonic oscillator is named ``h_c_harmonic`` where ``h_c`` indicates that it is a classical Hamiltonian Ingredient and ``harmonic`` indicates that it describes a harmonic oscillator.
 
 
 
-Ingredients can be included in a model by appending them to the model's ``ingredients`` attribute, which is a list of tuples where each tuple contains the name of the ingredient and the ingredient function itself. Because the ingredients list is read back to front, appending an ingredient is sufficient to overwrite any existing ingredient with the same name. For example, to include a custom quantum Hamiltonian ingredient in a model, one would do:
+Ingredients can be included in a Model object by appending them to the Model object's ``ingredients`` attribute, which is a list of tuples where each tuple contains the name of the Ingredient and the Ingredient function itself. Because the ingredients list is read back to front, appending an Ingredient is sufficient to overwrite any existing Ingredient with the same name. For example, to include a custom quantum Hamiltonian Ingredient in a Model object, one would do:
 
 .. code-block:: python
 
@@ -96,28 +43,28 @@ Ingredients can be included in a model by appending them to the model's ``ingred
     model.ingredients.append(("h_q", h_q_custom))
 
 
-The minimal set of ingredients required to run a simulation are: 
+The minimal set of Ingredients required to run a simulation comprises the following:
 
-- A quantum Hamiltonian ingredient, named ``h_q``.
-- A classical Hamiltonian ingredient, named ``h_c``.
-- A quantum-classical coupling Hamiltonian ingredient, named ``h_qc``.
-- A derivative coupling tensor ingredient (only required for models defined in an adiabatic basis), named ``derivative_coupling_dzc``.
+- A quantum Hamiltonian Ingredient, named ``h_q``.
+- A classical Hamiltonian Ingredient, named ``h_c``.
+- A quantum-classical interaction Hamiltonian Ingredient, named ``h_qc``.
+- A derivative coupling tensor Ingredient (only required for Model objects defined in an adiabatic basis), named ``derivative_coupling_dzc``.
 
-Additional optional ingredients that make the simulation more efficient or accurate are:
+Additional optional Ingredients that make the simulation more efficient or accurate are:
 
-- An initialization function for the classical coordinates, named ``init_classical``.
-- A gradient of the classical Hamiltonian with respect to the conjugate of the :ref:`complex classical coordinates <coordinates>`, named ``dh_c_dzc``.
-- A gradient of the quantum-classical coupling Hamiltonian with respect to the conjugate of the :ref:`complex classical coordinates <coordinates>`, named ``dh_qc_dzc``.
-- A hopping function for surface hopping algorithms, named ``hop``.
-- An ab initio property calculator that calculates physical properties with an interface to an electronic structure theory code, named ``ab_initio_property_calculator``.
+- An initialization Ingredient for the classical coordinates, named ``init_classical``.
+- A gradient of the classical Hamiltonian Ingredient with respect to the conjugate of the :ref:`complex classical coordinates <coordinates>`, named ``dh_c_dzc``.
+- A gradient of the quantum-classical interaction Hamiltonian Ingredient with respect to the conjugate of the :ref:`complex classical coordinates <coordinates>`, named ``dh_qc_dzc``.
+- A hop Ingredient for surface hopping algorithms, named ``hop``.
+- An *ab initio* property calculator Ingredient that calculates physical properties with an interface to an electronic structure theory code, named ``ab_initio_property_calculator``.
 
 
 Vectorization
 --------------------------
 
-By default, QC Lab assumes that ingredients are implemented in a vectorized fashion. This means that, rather than constructing the respective term for an individual trajectory, each ingredient constructs the term for all trajectories in a batch at once. Additionally, any keyword argument associated with an ingredient that is a NumPy array will have an initial trajectory dimension. For example, the quantum-classical Hamiltonian ingredient ``h_qc`` has a keyword argument ``z`` which is the :ref:`complex classical coordinate <coordinates>`. If the batch size is 100, then ``z`` will have shape ``(100, model.constants.num_classical_coordinates)`` where ``model.constants.num_classical_coordinates`` is the number of classical coordinates in the model. The output of the ``h_qc`` ingredient will then have shape ``(100, model.constants.num_quantum_states, model.constants.num_quantum_states)`` where ``model.constants.num_quantum_states`` is the number of quantum states in the model.
+By default, QC Lab assumes that Ingredients are implemented in a vectorized fashion. This means that, rather than constructing the respective term for an individual trajectory, each Ingredient constructs the term for all trajectories in a batch at once. Additionally, any keyword argument associated with an Ingredient that is a NumPy array will have an initial trajectory dimension. For example, the quantum-classical interaction Hamiltonian Ingredient ``h_qc`` has a keyword argument ``z`` which is the :ref:`complex classical coordinate <coordinates>`. If the batch size is 100, then ``z`` will have shape ``(100, model.constants.num_classical_coordinates)`` where ``model.constants.num_classical_coordinates`` is the number of classical coordinates in the model. The output of the ``h_qc`` Ingredient will then have shape ``(100, model.constants.num_quantum_states, model.constants.num_quantum_states)`` where ``model.constants.num_quantum_states`` is the number of quantum states in the model.
 
-Rather than implementing this vectorization yourself, you can use the ``@vectorize_ingredient`` decorator provided in the ``qclab.functions`` module. This decorator will automatically vectorize an ingredient that is implemented for a single trajectory (i.e., without any batch dimension). For example, the following implementation of the quantum Hamiltonian ingredient for a two-level system is not vectorized:
+Rather than implementing this vectorization yourself, you can use the ``@vectorize_ingredient`` decorator provided in the ``qclab.functions`` module. This decorator will automatically vectorize an Ingredient that is implemented for a single trajectory (i.e., without any batch dimension). For example, the following implementation of the quantum Hamiltonian Ingredient for a two-level system is not vectorized:
 
 .. code-block:: python
 
@@ -138,7 +85,7 @@ Rather than implementing this vectorization yourself, you can use the ``@vectori
         h_q[1, 0] = np.conj(v)
         return h_q
 
-The ingredient can then be included in a model as:
+The Ingredient can then be included in a Model object as:
 
 .. code-block:: python
 
@@ -151,7 +98,7 @@ The ingredient can then be included in a model as:
     should hard-code vectorization into Ingredients and leverage NumPy vectorization.
 
 
-Alternatively, vectorization can be implemented manually. For example, the following implementation of the quantum Hamiltonian ingredient for a two-level system is manually vectorized as:
+Alternatively, vectorization can be implemented manually. For example, the following implementation of the quantum Hamiltonian Ingredient for a two-level system is manually vectorized as:
 
 
 .. code-block:: python
@@ -180,9 +127,9 @@ Alternatively, vectorization can be implemented manually. For example, the follo
 Sparse Quantum-Classical Gradients
 ----------------------------------
 
-If left unspecified, the gradient of the quantum-classical Hamiltonian will be calculated numerically using finite differences. This can be computationally expensive and may introduce inaccuracies. This can be avoided by providing an analytical implementation of the gradient ingredient ``dh_qc_dzc``. In QC Lab, we implement this gradient in a sparse manner, meaning that we only compute the non-zero elements of the gradient matrix. This reduces the potentially large gradient tensor with shape ``(sim.settings.batch_size, model.constants.num_classical_coordinates, model.constants.num_quantum_states, model.constants.num_quantum_states)`` to a list of non-zero elements, ``mels``, their indices ``inds``, and the shape of the full tensor ``shape``. 
+If left unspecified, the gradient of the quantum-classical interaction Hamiltonian will be calculated numerically using finite differences. This can be computationally expensive and may introduce inaccuracies. This can be avoided by providing an analytical implementation of the gradient Ingredient ``dh_qc_dzc``. In QC Lab, we implement this gradient in a sparse manner, meaning that we only compute the non-zero elements of the gradient matrix. This reduces the potentially large gradient tensor with shape ``(sim.settings.batch_size, model.constants.num_classical_coordinates, model.constants.num_quantum_states, model.constants.num_quantum_states)`` to a list of non-zero elements, ``mels``, their indices ``inds``, and the shape of the full tensor ``shape``.
 
-In practice, the ordering of the matrix elements can have a dramatic impact on performance due to memory access patterns. Therefore, we recommend using ``numpy.where`` to determine the indices of the non-zero elements. For example, the following implementation of the gradient of the quantum-classical Hamiltonian for a spin-boson model computes only the non-zero elements of the gradient:
+In practice, the ordering of the matrix elements can have a dramatic impact on performance due to memory access patterns. Therefore, we recommend using ``numpy.where`` to determine the indices of the non-zero elements. For example, the following implementation of the gradient of the quantum-classical interaction Hamiltonian for a spin-boson model computes only the non-zero elements of the gradient:
 
 .. code-block:: python
 
@@ -202,10 +149,10 @@ In practice, the ordering of the matrix elements can have a dramatic impact on p
 
 
 
-An ingredient that returns dense tensor output can be automatically converted to returning a sparse tensor by invoking the ``@make_ingredient_sparse`` 
-decorator from the ``qclab.functions`` module. 
-This decorator determines the non-zero elements of a dense tensor, their indices, and the shape of the full tensor. 
-For example, the following implementation of the gradient of the quantum-classical Hamiltonian for a spin-boson model is dense, 
+An Ingredient that returns dense tensor output can be automatically converted to returning a sparse tensor by invoking the ``@make_ingredient_sparse``
+decorator from the ``qclab.functions`` module.
+This decorator determines the non-zero elements of a dense tensor, their indices, and the shape of the full tensor.
+For example, the following implementation of the gradient of the quantum-classical interaction Hamiltonian for a spin-boson model is dense,
 but made sparse by the decorator:
 
 .. code-block:: python
@@ -225,21 +172,21 @@ but made sparse by the decorator:
         return out
 
     
-Of course, the most efficient implementation is one that is both analytical and sparse without invoking the decorator. This is what is implemented in the ingredient ``ingredients.dh_qc_dzc_diagonal_linear`` which is included in the Spin-Boson model by default.
+The most efficient implementation is one that is both analytical and sparse without invoking the decorator. This is the form implemented in the ``ingredients.dh_qc_dzc_diagonal_linear`` Ingredient, which is included on the ``SpinBoson`` Model object by default.
 
 
 
 Ingredients in QC Lab
 ---------------------------------
 
-The built-in ingredients in QC Lab can be found in the ``qclab.ingredients`` module.
+The built-in Ingredients in QC Lab can be found in the ``qclab.ingredients`` module.
 
 .. note::
 
-   All ingredients assume that the Model object has a minimal set of constants including ``num_quantum_states`` 
-   (the number of quantum states) and ``num_classical_coordinates`` (the number of classical coordinates), ``classical_coordinate_mass`` 
-   (the mass of the classical coordinates), and ``classical_coordinate_weight`` (the weight of the classical coordinates). 
-   These constants are discussed in :ref:`Models <model>`. For brevity we exclude explicit mention of these constants in the ingredient documentation.
+   All Ingredients assume that the Model object has a minimal set of constants including ``num_quantum_states``
+   (the number of quantum states) and ``num_classical_coordinates`` (the number of classical coordinates), ``classical_coordinate_mass``
+   (the mass of the classical coordinates), and ``classical_coordinate_weight`` (the weight of the classical coordinates).
+   These constants are discussed in :ref:`Models <model>`. For brevity we exclude explicit mention of these constants in the Ingredient documentation.
 
 
 .. automodule:: qclab.ingredients

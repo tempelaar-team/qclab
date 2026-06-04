@@ -3,7 +3,7 @@
 .. I want to use FSSH instead.
 .. ===========================
 
-Sure! Following the last example you can simply swap out ``sim.algorithm`` to use ``FewestSwitchesSurfaceHopping``.
+Sure! Following the previous example, swap ``sim.algorithm`` to ``FewestSwitchesSurfaceHopping``:
 
 .. code-block:: python
 
@@ -21,7 +21,7 @@ The output has changed once more:
     :width: 50%
 
 
-You can learn about algorithms in the :ref:`Algorithms <algorithm>` documentation.
+You can learn about algorithms in the :ref:`Algorithms <algorithm>` section.
 
 
 .. note::
