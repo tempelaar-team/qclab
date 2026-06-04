@@ -446,9 +446,9 @@ def dh_c_dzc_harmonic_jit(z, h, w):
 @njit
 def h_qc_diagonal_linear_jit(z, gamma):
     """
-    Low-level function to generate the diagonal linear quantum-classical Hamiltonian.
+    Low-level function to generate the diagonal linear quantum-classical interaction Hamiltonian.
 
-    :math:`H_{nm} = \\delta_{nm}\\sum_{j} \\gamma_{nj} (z_{j} + z_{j}^*)`
+    :math:`H_{nm} = \\delta_{nm}\\sum_{\\xi} \\gamma_{n\\xi} (z_{\\xi} + z_{\\xi}^*)`
 
     .. rubric:: Args
 
@@ -460,7 +460,7 @@ def h_qc_diagonal_linear_jit(z, gamma):
     .. rubric:: Returns
 
     h_qc : ndarray
-        Diagonal linear quantum-classical Hamiltonian.
+        Diagonal linear quantum-classical interaction Hamiltonian.
     """
     batch_size = z.shape[0]
     num_classical_coordinates = z.shape[1]
@@ -591,8 +591,8 @@ def calc_sparse_inner_product(inds, mels, shape, vec_l_conj, vec_r, out=None):
 def analytic_der_couple_phase(sim, dh_qc_dzc, eigvals, eigvecs):
     """
     Calculates the phase change needed to fix the gauge using analytical derivative
-    couplings, i.e., calculates the phase-factors :math:`u^{q}_{i}` and :math:`u^{p}_{i}`
-    such that :math:`d_{ij}^{q}u_{i}^{q*}u_{j}^{q}` and :math:`d_{ij}^{p}u_{i}^{p*}u_{j}^{p}`
+    couplings, i.e., calculates the phase-factors :math:`u^{q}_{\\alpha}` and :math:`u^{p}_{\\alpha}`
+    such that :math:`d_{\\alpha\\beta}^{q}u_{\\alpha}^{q*}u_{\\beta}^{q}` and :math:`d_{\\alpha\\beta}^{p}u_{\\alpha}^{p*}u_{\\beta}^{p}`
     are real-valued.
 
     It does this by calculating the derivative couplings analytically. In the event of
@@ -604,7 +604,7 @@ def analytic_der_couple_phase(sim, dh_qc_dzc, eigvals, eigvecs):
     sim: Simulation
         Simulation object.
     dh_qc_dzc : tuple
-        Sparse representation of the derivative of the quantum-classical Hamiltonian
+        Sparse representation of the derivative of the quantum-classical interaction Hamiltonian
         with respect to the conjugate complex coordinate.
     eigvals : ndarray
         Eigenvalues of the quantum subsystem.
