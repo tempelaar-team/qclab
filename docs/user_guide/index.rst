@@ -5,15 +5,9 @@ User Guide
 
 .. toctree::
     :maxdepth: 1
-    :caption: Getting Started
+    :caption: User Guide
 
     install
-    architecture
-
-.. toctree::
-    :maxdepth: 1
-    :caption: Building Blocks
-
     ingredient
     task
     model
@@ -22,25 +16,4 @@ User Guide
     driver
     data
     coordinates
-
-.. toctree::
-    :maxdepth: 1
-    :caption: References
-
-    conventions
-    state_and_parameters
-    functions
-    numerical_constants
-
-.. toctree::
-    :maxdepth: 1
-    :caption: Topics
-
-    developing_models
-    ab_initio
-
-.. toctree::
-    :maxdepth: 1
-    :caption: Citing
-
     cite

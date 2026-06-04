@@ -4,7 +4,7 @@
 Simulations
 ===========================
 
-Simulations in QC Lab are carried out by instances of the ``qclab.Simulation`` class. These Simulation objects contain the model and Algorithm objects that define the system to be simulated and the method of simulation, respectively. The Simulation object also contains an instance of the ``qclab.Constants`` class (``sim.settings``) which defines the settings of the simulation, such as the time step, total simulation time, and number of trajectories to be simulated. The Simulation object also contains a dictionary (``sim.initial_state``) in which the initial state of the system is defined (these are typically algorithm specific).
+Simulations in QC Lab are carried out by instances of the ``qclab.Simulation`` class. These Simulation objects contain the Model and Algorithm objects that define the system to be simulated and the method of simulation, respectively. The Simulation object also contains an instance of the ``qclab.Constants`` class (``sim.settings``) which defines the settings of the simulation, such as the time step, total simulation time, and number of trajectories to be simulated. The Simulation object also contains a dictionary (``sim.initial_state``) in which the initial state of the system is defined (these are typically algorithm specific).
 
 Simulation Objects
 ---------------------------
@@ -28,18 +28,17 @@ A Simulation object containing a default mean-field simulation of the spin-boson
     sim = Simulation()
     sim.model = SpinBoson()
     sim.algorithm = MeanField()
-    # ``sim.initial_state`` is a dictionary; populate it by key.
-    wf0 = np.zeros(sim.model.constants.num_quantum_states, dtype=complex)
-    wf0[0] = 1.0 + 0.0j
-    sim.initial_state["wf_db"] = wf0
+    wf_db = np.zeros(sim.model.constants.num_quantum_states, dtype=complex)
+    wf_db[0] = 1.0 + 0.0j
+    sim.initial_state["wf_db"] = wf_db
 
 .. warning::
 
-    ``sim.initial_state`` is a dictionary, not an array. The diabatic
-    wavefunction is set by assigning to a dictionary key, as in
-    ``sim.initial_state["wf_db"] = wf0``. The value must be a NumPy
-    ``ndarray`` with ``dtype=complex``; a Python list is silently
-    skipped at initialization.
+    ``sim.initial_state`` is a dictionary, not an array. Set the diabatic
+    wavefunction with ``sim.initial_state["wf_db"] = wf_db`` rather than
+    ``sim.initial_state = wf_db``. The value must be an ``np.ndarray`` with
+    ``dtype=complex``; a Python list is silently skipped at
+    initialization.
 
 Simulation Settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -79,7 +78,7 @@ Alternatively, a simulation's settings can be changed after the simulation has b
 Running a Simulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Once a Simulation object has been created and populated with a model, algorithm, and initial state, the simulation can be run by passing the simulation to a dynamics driver. See :ref:`Dynamics Drivers <driver>` for more information.
+Once a Simulation object has been created and populated with a Model object, an Algorithm object, and an initial state, the simulation can be run by passing the Simulation object to a Dynamics Driver. See :ref:`Dynamics Drivers <driver>` for more information.
 
 .. code-block:: python
 
@@ -87,4 +86,4 @@ Once a Simulation object has been created and populated with a model, algorithm,
 
     data = serial_driver(sim)
 
-The resulting Data object is a dictionary containing the outputs of the simulation, which are defined by the collect tasks of the algorithm (see :ref:`Algorithms <algorithm>`). For more information on the Data objects see :ref:`Data Objects <data>`.
+The resulting Data object holds a dictionary of outputs from the simulation, which are defined by the collect Tasks of the Algorithm object (see :ref:`Algorithms <algorithm>`). For more information on the Data object see :ref:`Data Objects <data>`.

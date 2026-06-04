@@ -76,8 +76,9 @@ class MeanField(Algorithm):
 
 class MeanFieldAbInitio(Algorithm):
     """
-    Mean-field dynamics algorithm class implemented in the adiabatic basis
-    and compatible with ab initio calculations.
+    Mean-field dynamics (also known as Ehrenfest dynamics) algorithm class
+    implemented in the adiabatic basis and compatible with *ab initio*
+    calculations.
     """
 
     def __init__(self, settings=None):

@@ -5,10 +5,10 @@
 .. ==========================================
 
 
-Changing the coupling term is straightforward! We'll make a new ingredient that couples the boson coordinates to the off-diagonal
+Changing the coupling term is straightforward! We'll make a new Ingredient that couples the boson coordinates to the off-diagonal
 elements of the quantum Hamiltonian.
 
-For simplicity we will make an ingredient that creates the quantum-classical term of the Hamiltonian for a single trajectory and then use 
+For simplicity we will make an Ingredient that creates the quantum-classical interaction Hamiltonian for a single trajectory and then use
 QC Lab's built-in vectorization decorator to automatically vectorize it.
 
 
@@ -34,24 +34,23 @@ QC Lab's built-in vectorization decorator to automatically vectorize it.
         h_qc[1, 0] = np.conj(h_qc[0, 1])
         return h_qc
 
-Next we can add the ingredient to the model's ingredients list, and overwrite the analytical gradient ingredient
-which is no longer correct for the new coupling. QC Lab will automatically differentiate the new coupling term 
+Next, we add the new Ingredient to the Model object's ingredients list and override the analytical gradient Ingredient
+(which is no longer correct for the new coupling). QC Lab will then differentiate the new coupling term numerically
 using finite differences.
 
 .. code-block:: python
 
 
-    # Add the new coupling term to the model's ingredients.
+    # Add the new coupling term to the Model object's Ingredients.
     sim.model.ingredients.append(("h_qc", h_qc))
-    # Overwrite the analytical gradient ingredient, which is no longer correct for the new coupling.
+    # Overwrite the analytical gradient Ingredient, which is no longer correct for the new coupling.
     sim.model.ingredients.append(("dh_qc_dzc", None))
 
 
 Now we can run the simulation with the new coupling term and compare the results to the previous simulation.
 You'll notice a small decrease in the performance of the simulation due to the numerical calculation of the gradients.
 If you'd like to speed up the simulation, you can implement an analytical gradient for the new coupling term by following the
-:ref:`Developing Models and Ingredients <developing-models>` section. The :ref:`Ingredients <ingredient>` section also covers
-the sparse analytical-gradient pattern.
+:ref:`Sparse Quantum-Classical Gradients <ingredient>` section.
 
 
 .. image:: fssh_lreorg_inv_vel_offdiag.png
