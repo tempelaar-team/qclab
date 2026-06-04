@@ -14,7 +14,7 @@ In general, a Data object has the following attributes:
 - ``data_dict``: a dictionary that stores the results of the simulation. Each key in the dictionary corresponds to a specific quantity that was collected during the simulation, and the value is an array containing the values of that quantity averaged over the trajectories.
 - ``log``: a string that stores the log of errors or warnings that occurred during the simulation.
 
-Data objects provide several methods for managing and processing the data they contain. Some of the most important methods include:
+Data objects provide several methods for managing and processing the data they contain, including:
 
 - ``add_data``: adds data from an existing Data object to the current one.
 - ``save``: saves the Data object to a file.
@@ -44,7 +44,7 @@ Here is a simple example of running a simulation and plotting from the Data obje
     sim = Simulation()
     sim.model = SpinBoson()
     sim.algorithm = MeanField()
-    sim.initial_state.wf_db= np.array([1,0], dtype=complex)
+    sim.initial_state["wf_db"] = np.array([1, 0], dtype=complex)
     data = serial_driver(sim)
 
     t = data.data_dict['t']
