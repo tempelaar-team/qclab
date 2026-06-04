@@ -4,7 +4,7 @@
 .. Modifying the FSSH Algorithm
 .. ============================
 
-Let's try modifying the FSSH algorithm so that the directions of the velocities of frustrated trajectories are reversed.
+Let's try modifying the FSSH Algorithm object so that the velocities of frustrated trajectories are reversed.
 In the :ref:`complex coordinate formalism <coordinates>`, this means conjugating the `z` coordinate of the frustrated trajectories.
 To this end, we write the following function:
 
@@ -24,11 +24,11 @@ To this end, we write the following function:
         return state, parameters
 
 
-Now we can insert this function as a task into an instance of the FSSH Algorithm object. To know where we should insert it, we can look 
+Now we can insert this function as a Task into an instance of the FSSH Algorithm object. To know where we should insert it, we can look
 at the ``update_recipe`` of the FSSH Algorithm object (see :ref:`fssh_source`).
 
 A good place to invert the velocities of frustrated trajectories is just at the end of the active surface updates.
-QC Lab makes this particularly easy to do by using Python's built-in list methods to append our new task to the end of the update recipe.
+We append the new Task to the end of the update Recipe using a standard Python list method:
 
 .. code-block:: python
 

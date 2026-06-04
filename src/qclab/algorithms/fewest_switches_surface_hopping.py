@@ -132,8 +132,8 @@ class FewestSwitchesSurfaceHopping(Algorithm):
 
 class FewestSwitchesSurfaceHoppingAbInitio(Algorithm):
     """
-    Fewest switches surface hopping algorithm class implemented in the adiabatic basis
-    for compatibility with ab initio calculations.
+    Fewest-switches surface hopping algorithm class implemented in the adiabatic basis
+    for compatibility with *ab initio* calculations.
     """
 
     def __init__(self, settings=None):

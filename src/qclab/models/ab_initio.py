@@ -21,9 +21,9 @@ import copy
 
 class AbInitio(Model):
     """
-    Model class for ab initio calculations.
+    Model class for *ab initio* calculations.
 
-    It is compatible with the ab initio algorithms implemented in QC Lab.
+    It is compatible with the *ab initio* Algorithms implemented in QC Lab.
     """
 
     def __init__(self, constants=None):

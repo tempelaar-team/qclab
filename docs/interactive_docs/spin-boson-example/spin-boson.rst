@@ -4,7 +4,7 @@
 Running a Spin-Boson Model
 ===========================
 
-Here's a simple example of how to run a spin-boson model with mean-field dynamics in QC Lab.
+Here's a simple example of how to run a spin-boson model with mean-field dynamics (also known as Ehrenfest dynamics) in QC Lab.
 A Jupyter Notebook version of this tutorial can be found `here <https://github.com/tempelaar-team/qclab/blob/main/examples/interactive_docs_example.ipynb>`_.
 
 
@@ -30,7 +30,7 @@ Next, we will set up the Simulation object and equip it with the Model and Algor
     sim.model = SpinBoson()
     # Attach the mean-field algorithm.
     sim.algorithm = MeanField()
-    # Initialize the diabatic wavevector. 
+    # Initialize the diabatic wavefunction.
     # Here, the first vector element refers to the upper state and the second
     # element refers to the lower state.
     sim.initial_state["wf_db"] = np.array([1, 0], dtype=complex)
@@ -65,9 +65,9 @@ The output of this code is:
     
 
 .. note::
-    This simulation ran in serial mode. For a speed-up on high-performance architecture, consider adopting the parallel driver by
-    running the simulation as ``data = parallel_driver_multiprocessing(sim)`` instead. More information on parallelization can be 
-    found :ref:`here <driver>`
+    This simulation ran in serial mode. For a speed-up on high-performance architecture, consider adopting a parallel Dynamics Driver,
+    e.g. ``data = parallel_driver_multiprocessing(sim)``. More information on parallelization can be found in the
+    :ref:`Drivers <driver>` section.
 
 
 I want to increase the reorganization energy.

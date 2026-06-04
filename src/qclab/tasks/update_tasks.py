@@ -319,7 +319,7 @@ def update_derivative_coupling_dzc(
 
     .. math::
 
-        d^{i}_{\\alpha,\\beta} = \\langle\\alpha(z)\\vert\\partial_{z_{i}^{*}}\\vert\\beta(z)\\rangle
+        d^{\\xi}_{\\alpha\\beta}(z) = \\langle\\alpha(z)\\vert\\frac{\\partial}{\\partial z_{\\xi}^{*}}\\vert\\beta(z)\\rangle
 
     Raises
 
@@ -331,7 +331,7 @@ def update_derivative_coupling_dzc(
     Constants and Settings
     ----------------------
     sim.model.update_dh_qc_dzc: Bool, default: False
-        Model flag indicating if the quantum-classical Hamiltonian is to be updated at each timestep.
+        Model flag indicating if the quantum-classical interaction Hamiltonian is to be updated at each time step.
     sim.algorithm.settings.use_gauge_field_force: Bool, default: False
         Boolean indicating if a gauge field force is to be added to the quantum-classical force.
 
@@ -417,7 +417,7 @@ def update_quantum_classical_force(
     Constants and Settings
     ----------------------
     sim.model.update_dh_qc_dzc: Bool, default: False
-        Model flag indicating if the quantum-classical Hamiltonian is to be updated at each timestep.
+        Model flag indicating if the quantum-classical interaction Hamiltonian is to be updated at each time step.
     sim.algorithm.settings.use_gauge_field_force: Bool, default: False
         Boolean indicating if a gauge field force is to be added to the quantum-classical force.
 
@@ -932,7 +932,7 @@ def update_hop_prob_fssh(
     """
     Calculates the hopping probabilities according to the FSSH algorithm.
 
-    :math:`P_{a \\rightarrow b} = -2 \\Re \\left( (C_{b}/C_{a}) \\langle a(t) | b(t-dt) \\rangle \\right)`
+    :math:`P_{a \\rightarrow \\beta} = -2 \\Re \\left( (C_{\\beta}/C_{a}) \\langle a(t) | \\beta(t-dt) \\rangle \\right)`
 
     Optional Keyword Arguments
     --------------------------
@@ -1507,7 +1507,7 @@ def update_h_q_tot(
     h_q_name:
         Name of the quantum Hamiltonian in the State object.
     h_qc_name:
-        Name of the quantum-classical coupling Hamiltonian in the State object.
+        Name of the quantum-classical interaction Hamiltonian in the State object.
     h_q_tot_name:
         Name of the total Hamiltonian of the quantum subsystem in the State object.
         (``h_q + h_qc``)
@@ -2300,23 +2300,23 @@ def update_wf_adb_hop_prob(
 
     .. math::
 
-        g_{k->j} = ( \int_{t}^{t+\Delta} b_{jk}(t') dt' ) / (c^{*}_{k}(t)c_{k}(t))
+        g_{a \to \beta} = ( \int_{t}^{t+\Delta} b_{\beta a}(t') dt' ) / (c^{*}_{a}(t)c_{a}(t))
 
     .. math::
 
-        b_{jk}(t) = -2\Re(c_{j}^{*}(t)c_{k}(t) A_{jk}(t))
+        b_{\beta a}(t) = -2\Re(c_{\beta}^{*}(t)c_{a}(t) A_{\beta a}(t))
 
     .. math::
 
-        A_{jk}(t) = \dot{q}(t) \cdot d_{jk}(t)
+        A_{\beta a}(t) = \dot{q}(t) \cdot d_{\beta a}(t)
 
-    Note that this is consistent with Eq. 19-21 for real and complex :math:`d_{jk}`.
+    Note that this is consistent with Eq. 19-21 for real and complex :math:`d_{\beta a}`.
 
-    Eq. 30 (follwoing) is equivalent to the above expression for :math:`b_{jk}` when :math:`d_{jk}` is real-valued:
+    Eq. 30 (following) is equivalent to the above expression for :math:`b_{\beta a}` when :math:`d_{\beta a}` is real-valued:
 
     .. math::
 
-        b_{jk}(t) = -2\Re(c_{j}(t)c_{k}^{*}(t) A_{jk}(t))
+        b_{\beta a}(t) = -2\Re(c_{\beta}(t)c_{a}^{*}(t) A_{\beta a}(t))
 
     Optional Keyword Arguments
     --------------------------
@@ -2654,16 +2654,16 @@ def update_ab_initio_property(
     },
 ):
     """
-    Calculates ab initio properties using the ab initio property calculator ingredient.
+    Calculates *ab initio* properties using the *ab initio* property calculator Ingredient.
 
     Stores the properties as a list of dictionaries in the Parameters object, a dictionary
     in the State object containing vectorized properties, and as new variables in the State object
-    with the same name in property_dict appended with "aip_" where aip stands for "ab initio property".
+    with the same name in property_dict appended with ``aip_`` where ``aip`` stands for *ab initio* property.
 
     Optional Keyword Arguments
     --------------------------
     ab_initio_property_name:
-        The name under which to store the ab initio properties in the State and Parameters objects.
+        The name under which to store the *ab initio* properties in the State and Parameters objects.
     property_dict:
         A dictionary of properties and associated argument dictionaries, i.e. {property_name:{arg1:arg1_name,...}}.
         The argument dictionaries contain names of objects in the State object, Booleans, or None.
@@ -2671,7 +2671,7 @@ def update_ab_initio_property(
     Ingredients
     -----------
     ab_initio_property_calculator:
-        Ab initio property calculator.
+        *Ab initio* property calculator.
 
     Reads
     -----
@@ -2679,10 +2679,10 @@ def update_ab_initio_property(
     Writes
     ------
     parameters[ab_initio_property_name]: List
-        A List of dictionaries containing the ab initio properties calculated for each
+        A List of dictionaries containing the *ab initio* properties calculated for each
         trajectory.
     state[ab_initio_property_name]: Dict
-        A dictionary containing the calculated ab initio properties restructured into a
+        A dictionary containing the calculated *ab initio* properties restructured into a
         ndarray where the first index corresponds to the trajectory index.
     state["aip_" + property]: ndarray of shape (B, shape(property)), dtype=type(property)
         A new variable in the State object giving the result of the calculation of property.

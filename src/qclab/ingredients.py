@@ -16,7 +16,7 @@ def h_c_harmonic(model, parameters, **kwargs):
     """
     Harmonic oscillator classical Hamiltonian function.
 
-    :math:`H_{\\mathrm{c}} = \\frac{1}{2}\\sum_{n} \\left( \\frac{p_n^2}{m_n} + m_n \\omega_n^2 q_n^2 \\right)`
+    :math:`H_{\\mathrm{c}} = \\frac{1}{2}\\sum_{\\xi} \\left( \\frac{p_\\xi^2}{m_\\xi} + m_\\xi \\omega_\\xi^2 q_\\xi^2 \\right)`
 
     .. rubric:: Keyword Args
 
@@ -48,7 +48,7 @@ def h_c_free(model, parameters, **kwargs):
     """
     Free particle classical Hamiltonian function.
 
-    :math:`H_{\\mathrm{c}} = \\sum_{n} \\left( \\frac{p_n^2}{2m_n} \\right)`
+    :math:`H_{\\mathrm{c}} = \\sum_{\\xi} \\left( \\frac{p_\\xi^2}{2m_\\xi} \\right)`
 
     .. rubric:: Keyword Args
 
@@ -215,9 +215,9 @@ def h_q_nearest_neighbor(model, parameters, **kwargs):
 
 def h_qc_diagonal_linear(model, parameters, **kwargs):
     """
-    Diagonal linear quantum-classical Hamiltonian.
+    Diagonal linear quantum-classical interaction Hamiltonian.
 
-    :math:`H_{nm} = \\delta_{nm}\\sum_{j} \\gamma_{nj} (z_{j} + z_{j}^*)`
+    :math:`H_{nm} = \\delta_{nm}\\sum_{\\xi} \\gamma_{n\\xi} (z_{\\xi} + z_{\\xi}^*)`
 
     .. rubric:: Keyword Args
 
@@ -232,7 +232,7 @@ def h_qc_diagonal_linear(model, parameters, **kwargs):
     .. rubric:: Returns
 
     h_qc : ndarray
-        Quantum-classical coupling Hamiltonian.
+        Quantum-classical interaction Hamiltonian.
         ``(batch_size, num_states, num_states)``.
     """
     z = kwargs["z"]
@@ -242,10 +242,10 @@ def h_qc_diagonal_linear(model, parameters, **kwargs):
 
 def dh_qc_dzc_diagonal_linear(model, parameters, **kwargs):
     """
-    Gradient of the diagonal linear quantum-classical coupling Hamiltonian
+    Gradient of the diagonal linear quantum-classical interaction Hamiltonian
     in sparse format.
 
-    :math:`[\\partial_{z} H_{qc}]_{ijkl} = \\delta_{kl}\\gamma_{kj}`
+    :math:`[\\partial_{z} H_{qc}]_{\\xi nm} = \\delta_{nm}\\gamma_{n\\xi}`
 
     .. rubric:: Keyword Args
 
