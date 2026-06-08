@@ -4,64 +4,83 @@
 Architecture Overview
 ==========================
 
-A simulation in QC Lab is built from five objects and a dynamics core that
-integrates them in time. This section describes those five objects, the
-way they are populated with physics and numerical operations, and how the
-dynamics core consumes them.
+A QC Lab simulation has two coequal parts — a Model object and an
+Algorithm object — held inside a Simulation object and executed by a
+Dynamics Driver. The Driver returns a Data object containing the
+trajectory-averaged results. This section names the components, shows
+how they fit together, and traces the path a single batch of
+trajectories takes from input to output.
 
-At a high level, the Simulation object holds a Model object and an
-Algorithm object and is passed to a dynamics driver. The driver loops
-over time, executing the three recipes defined on the Algorithm object.
-The recipes are lists of tasks that read named entries from the State
-object, call ingredients on the Model object, and write named entries
-back. Trajectory-averaged outputs end up in a Data object.
+----
 
-The five objects
-================
+Components
+==========
+
+A QC Lab simulation is described by a small number of objects with
+well-defined responsibilities. The following list is comprehensive
+for the public API.
 
 .. list-table::
    :header-rows: 1
-   :widths: 18 52 30
+   :widths: 22 50 28
 
    * - Object
      - Role
      - Defined in
    * - Simulation object
-     - Top-level container. Holds settings, the Model object, the
-       Algorithm object, the initial-state dictionary, and the
-       per-run time index ``t_ind``.
+     - Top-level container. Holds the Model object, the Algorithm
+       object, the per-run settings on ``sim.settings``, and the
+       ``initial_state`` dictionary that seeds the wavefunction.
      - ``simulation.py``
    * - Model object
-     - Physical system. Holds a Constants object and a list of
-       ingredients that define its Hamiltonians and initialization.
+     - Physical system. Holds a Constants object on ``model.constants``
+       and a list of Ingredients on ``model.ingredients`` that compute
+       the Hamiltonians and initial conditions.
      - ``model.py``
    * - Algorithm object
-     - Numerical recipe. Holds three task lists —
+     - Dynamics method. Holds three Recipes —
        ``initialization_recipe``, ``update_recipe``, and
-       ``collect_recipe`` — together with algorithm-specific settings.
+       ``collect_recipe`` — together with algorithm-specific settings
+       on ``algorithm.settings``.
      - ``algorithm.py``
    * - Constants object
-     - Attribute-bag for constants and settings. Re-runs a registered
-       initializer whenever a constant changes after initialization.
-       Used by both the Model object and the Algorithm object.
+     - Attribute holder with an optional update-on-write callback. Used
+       on ``sim.settings``, ``model.constants``, and
+       ``algorithm.settings``; the callback fires only on
+       ``model.constants`` and re-runs the Model's ``_init_*``
+       Ingredients.
      - ``constants.py``
    * - Data object
-     - Trajectory-averaged output container. Supports HDF5 and
-       ``.npz`` I/O, captures the in-memory simulation log, and merges
-       results from multiple batches via
-       :meth:`~qclab.data.Data.add_data`.
+     - Trajectory-averaged output container. Stores results in
+       ``data.data_dict``, captures the in-memory log, and round-trips
+       to HDF5 or ``.npz``.
      - ``data.py``
 
-A simulation is run by handing the Simulation object to one of the
-dynamics drivers in :mod:`qclab.dynamics`:
-:func:`~qclab.dynamics.serial_driver`,
-:func:`~qclab.dynamics.parallel_driver_multiprocessing`, or
-:func:`~qclab.dynamics.parallel_driver_mpi`. Each driver builds per-batch
-State and Parameters dictionaries, runs the dynamics core, and merges
-the resulting Data objects.
+Two further dictionaries are created and discarded once per batch by
+the Dynamics Driver:
 
-The relationships between the objects are summarised graphically below.
-Click any node to jump to the corresponding section.
+- The **State object** carries the per-trajectory quantities that
+  change during the simulation (the wavefunction, the complex-classical
+  coordinate, eigenvectors, the active surface in the FSSH case).
+- The **Parameters object** carries the auxiliary quantities computed
+  once and reused across update time steps (for example the cached
+  output of an electronic-structure call in the *ab initio*
+  algorithms).
+
+Both are passed to every Task in a Recipe. See :ref:`State and
+Parameters Objects <state-and-parameters>` for their lifetime and the
+``*_name`` keyword convention that protects Tasks from key collisions.
+
+----
+
+How the components fit together
+===============================
+
+The Simulation object aggregates the Model object and the Algorithm
+object; the Dynamics Driver accepts the Simulation object as input,
+creates the State and Parameters objects, runs the dynamics, and
+returns the Data object. Tasks and Ingredients populate the Algorithm
+object and the Model object respectively.
 
 .. container:: graphviz-center
 
@@ -79,13 +98,13 @@ Click any node to jump to the corresponding section.
           color="#f38c3c"
         ];
 
-        sim   [label="Simulation Object", URL="simulation.html"];
-        model [label="Model Object",      URL="model.html"];
-        algo  [label="Algorithm Object",  URL="algorithm.html"];
-        driver[label="Dynamics Driver",   URL="driver.html"];
-        data  [label="Data Object",       URL="data.html"];
-        ingredients [label="Ingredients", URL="ingredient.html"];
-        tasks [label="Tasks", URL="task.html"];
+        sim   [label="Simulation Object",  URL="simulation.html"];
+        model [label="Model Object",       URL="model.html"];
+        algo  [label="Algorithm Object",   URL="algorithm.html"];
+        driver[label="Dynamics Driver",    URL="driver.html"];
+        data  [label="Data Object",        URL="data.html"];
+        ingredients [label="Ingredients",  URL="ingredient.html"];
+        tasks [label="Tasks",              URL="task.html"];
 
         ingredients -> model [color="#f38c3c"];
         tasks -> algo [color="#f38c3c"];
@@ -95,94 +114,138 @@ Click any node to jump to the corresponding section.
         driver-> data [color="#f38c3c"];
       }
 
-----
-
-Ingredients, tasks, and recipes
-===============================
-
-The physics of a simulation and the algorithm that propagates it are
-defined through three related concepts.
-
-Ingredients are functions of the form ``f(model, parameters, **kwargs)``
-that compute a single physical quantity — a Hamiltonian, a gradient, an
-initial condition, a hop result. They are attached to the Model object
-as a list of ``(slot_name, callable)`` tuples in
-``model.ingredients``. The list is consulted back-to-front, so
-appending ``("h_qc", my_new_h_qc)`` overrides the existing ``h_qc``
-ingredient without removing it. The standard slot names are listed in
-the :ref:`Conventions <conventions>` section. Ingredients are described
-in detail in the :ref:`Ingredients <ingredient>` section.
-
-Tasks are functions of the form
-``task(sim, state, parameters, **opts) -> (state, parameters)``. A task
-reads named entries from the State and Parameters objects, calls
-ingredients via :meth:`Model.get <qclab.Model.get>`, and writes named
-entries back. Every State-object key that a task touches is exposed as a
-``*_name`` keyword argument with a sensible default, so the same task
-can be rebound to different keys with ``functools.partial``. The
-:ref:`State and Parameters <state-and-parameters>` section describes
-the rebinding pattern. Tasks themselves are described in the
-:ref:`Tasks <task>` section.
-
-Recipes are plain Python lists of tasks on the Algorithm class. The
-:meth:`Algorithm.execute_recipe <qclab.Algorithm.execute_recipe>` method
-iterates the list and threads ``(state, parameters)`` through each call.
-The Algorithm object exposes three recipe attributes:
-``initialization_recipe`` is executed once at the start of the
-simulation, ``update_recipe`` is executed every update time step, and
-``collect_recipe`` is executed every collect time step. Algorithms are
-described in detail in the :ref:`Algorithms <algorithm>` section.
-
-QC Lab is designed so that new physics and new algorithms can often be
-introduced by adding new ingredients to an existing Model object or new
-tasks to an existing Algorithm object. Either case may, however,
-require writing new ingredients or new tasks as well — for example, a
-new algorithm may need a bespoke update task to evaluate a quantity
-that the existing tasks do not provide. The :ref:`Developing Models
-<developing-models>` section walks through the choices involved when
-adding new physics.
+Each node in the diagram links to its dedicated section.
 
 ----
 
-The dynamics core
+Building blocks
+===============
+
+Three named concepts populate the Model object and the Algorithm
+object.
+
+Ingredients
+-----------
+
+An Ingredient is a function with signature
+``f(model, parameters, **kwargs)`` that returns a single physically
+meaningful quantity — a Hamiltonian, a gradient, an initialization, a
+hop test. Ingredients are attached to the Model object as
+``(slot_name, callable)`` tuples in ``model.ingredients``. The list is
+consulted back-to-front, so appending ``("h_qc", my_new_h_qc)``
+overrides the existing Ingredient in the ``h_qc`` slot. The
+comprehensive list of slot names lives in
+:ref:`Conventions <conventions>`; the Ingredient mechanism is covered
+in :ref:`Ingredients <ingredient>`.
+
+Tasks
+-----
+
+A Task is a function with signature
+``f(sim, state, parameters, **kwargs)`` returning
+``(state, parameters)``. A Task reads named entries from the State and
+Parameters objects, calls Ingredients via
+:meth:`Model.get <qclab.Model.get>`, and writes named entries back. The
+``*_name`` keyword convention lets a single Task be reused under
+different State entries by wrapping it in :func:`functools.partial`.
+Tasks fall into three categories — initialization Tasks, update Tasks,
+and collect Tasks — corresponding to the three Recipes. See
+:ref:`Tasks <task>`.
+
+Recipes
+-------
+
+A Recipe is a chronological list of Tasks held on the Algorithm
+object. Every Algorithm object exposes three Recipes: the
+initialization Recipe (run once at ``t = 0``), the update Recipe (run
+on every update time step), and the collect Recipe (run on every
+collect time step). The full Recipe machinery — including the
+deep-copy boundary at :meth:`Algorithm.__init__ <qclab.Algorithm.__init__>`
+and the ``recipe = recipe + [task]`` editing idiom — is covered in
+:ref:`Recipes <recipe>`.
+
+Adding new physics or a new dynamics method means writing the
+necessary Tasks and Ingredients and then modifying the Recipes and
+the Ingredient list. See :ref:`Developing Models and Ingredients
+<developing-models>` and :ref:`Developing Custom Algorithms
+<developing-algorithms>` for the two cases.
+
+----
+
+The dynamics flow
 =================
 
-The integration loop is implemented by
-:func:`qclab.dynamics.run_dynamics`. At each update time step it does
-the following.
-
-#. When ``t_ind == 0`` it runs the ``initialization_recipe`` once.
-#. On a collect time step (``t_ind % dt_collect_n == 0``), it runs the
-   ``collect_recipe`` and then calls
-   :meth:`Data.add_output_to_data_dict <qclab.data.Data.add_output_to_data_dict>`
-   to merge ``state["output_dict"]`` into the Data object.
-#. On every update time step, it runs the ``update_recipe``.
-
-The dynamics drivers wrap this core. A driver divides ``num_trajs``
-across batches of size ``batch_size``, builds a fresh State and
-Parameters dictionary for each batch, calls ``run_dynamics``, and then
-merges the per-batch Data objects via
-:meth:`Data.add_data <qclab.data.Data.add_data>`. The merge uses a
+A simulation is run by handing a populated Simulation object to one of
+the three Dynamics Drivers in :mod:`qclab.dynamics`:
+:func:`~qclab.dynamics.serial_driver`,
+:func:`~qclab.dynamics.parallel_driver_multiprocessing`, or
+:func:`~qclab.dynamics.parallel_driver_mpi`. The Driver divides
+``num_trajs`` into batches of size ``batch_size``, builds a fresh
+State object and a fresh Parameters object for each batch, and calls the dynamics
+core :func:`qclab.dynamics.run_dynamics` on each batch. Per-batch Data
+objects are then merged into a single Data object by
+:meth:`Data.add_data <qclab.data.Data.add_data>` using a
 trajectory-count-weighted average. See :ref:`Drivers <driver>` for the
-serial, multiprocessing, and MPI variants.
+three Drivers and :ref:`Parallelization and Reproducibility
+<parallelization>` for the cross-cutting topics (batch size, seeds,
+MPI specifics).
+
+Inside a single batch, :func:`qclab.dynamics.run_dynamics` iterates
+over update time steps. At each update time step:
+
+#. If the time index is ``0``, the initialization Recipe runs once to
+   populate the State and Parameters objects with the wavefunction,
+   the complex-classical coordinate, and any algorithm-specific
+   entries.
+#. If the time index is a multiple of ``dt_collect_n``, the collect
+   Recipe runs. Its final entries — the contents of
+   ``state["output_dict"]`` — are then summed across the batch axis
+   and divided by the running normalization factor by
+   :meth:`Data.add_output_to_data_dict <qclab.data.Data.add_output_to_data_dict>`,
+   producing one trajectory-averaged row in
+   ``data.data_dict[<key>]`` per collect time step.
+#. The update Recipe runs unconditionally, advancing the wavefunction
+   and the complex-classical coordinate by ``dt_update``.
+
+The two granularities — ``dt_update`` for the integrator and
+``dt_collect`` for the recorded output — are independently
+configurable on ``sim.settings``.
 
 ----
 
-Numerical kernels
-=================
+Cross-compatibility of Models and Algorithms
+============================================
+
+A diabatic Algorithm runs against any Model object defined in a
+diabatic basis. The *ab initio* Algorithms
+:class:`~qclab.algorithms.MeanFieldAbInitio` and
+:class:`~qclab.algorithms.FewestSwitchesSurfaceHoppingAbInitio` pair
+only with the :class:`~qclab.models.AbInitio` Model object, and vice
+versa; mixing the two families is not supported. See
+:ref:`Choosing an Algorithm <choosing-algorithm>` for the
+compatibility matrix and a decision tree.
+
+----
+
+Numerical kernels and tunable thresholds
+========================================
 
 The :mod:`qclab.functions` module collects the low-level math used by
-ingredients and tasks. This includes the complex-coordinate conversions
-(``z_to_q``, ``qp_to_z``, ``dqdp_to_dzc``, ``dzdzc_to_dqdp``), batched
-matrix-vector helpers, RK4 sub-step kernels, the sparse-gradient inner
-product ``calc_sparse_inner_product``, gauge fixing, and
-``numerical_fssh_hop``. Hot loops are decorated with ``@njit`` from
-:mod:`qclab.utils`, which falls back to a no-op when Numba is
-unavailable. See :ref:`Functions <functions>` for the full reference and
-:ref:`Numerical Constants <numerical-constants>` for the unit
-conversions and tunable thresholds.
+the built-in Ingredients and Tasks: the complex-coordinate conversions
+(``z_to_q``, ``z_to_p``, ``qp_to_z``, ``dqdp_to_dzc``,
+``dzdzc_to_dqdp``), batched matrix-vector helpers, RK4 sub-step
+kernels, the sparse-gradient inner product, gauge-fixing routines, and
+the numerical fewest-switches surface-hopping hop test. Hot loops are
+decorated with ``@njit`` from :mod:`qclab.utils`, which falls back to a
+no-op when Numba is unavailable. The full reference is in
+:ref:`Low-level Functions <functions>`.
 
-Optional dependencies are handled by the ``DISABLE_NUMBA``,
+The :mod:`qclab.numerical_constants` module holds numerical thresholds
+(``SMALL``, ``GAUGE_FIX_THRESHOLD``, ``FINITE_DIFFERENCE_DELTA``) and
+unit-conversion factors used by the built-in Model objects. See
+:ref:`Numerical Constants <numerical-constants>`.
+
+Optional dependencies are gated by the ``DISABLE_NUMBA``,
 ``DISABLE_H5PY``, and ``DISABLE_ASE`` flags in :mod:`qclab.utils`, so
 QC Lab installs and runs without any of them. Features that depend on
 each are degraded accordingly.
@@ -192,21 +255,24 @@ each are degraded accordingly.
 Module map
 ==========
 
+The following tree is comprehensive for the top-level layout of
+``src/qclab/``.
+
 .. code-block:: text
 
     src/qclab/
     ├── __init__.py               # Top-level imports and version
     ├── simulation.py             # Simulation class
-    ├── model.py                  # Model base class and ingredient lookup
-    ├── algorithm.py              # Algorithm base class and recipe executor
+    ├── model.py                  # Model base class and Ingredient lookup
+    ├── algorithm.py              # Algorithm base class and Recipe executor
     ├── constants.py              # Constants attribute-bag with change hook
     ├── data.py                   # Data: collection, merging, HDF5 / npz I/O
     ├── utils.py                  # JIT shims, in-memory logging, optional-dep flags
     ├── numerical_constants.py    # SMALL, finite-difference delta, unit conversions
-    ├── ingredients.py            # Reusable model ingredients
+    ├── ingredients.py            # Built-in Ingredients
     ├── functions.py              # Low-level numerics, JIT kernels, gauge fixing
-    ├── algorithms/               # MeanField, FSSH (and ab initio variants)
-    ├── dynamics/                 # run_dynamics core + serial / MP / MPI drivers
-    ├── models/                   # Spin-boson, Holstein, FMO, Tully I / II / III, AbInitio
-    ├── tasks/                    # Initialization, update, and collect tasks
-    └── interfaces/               # Q-Chem ab initio interface
+    ├── algorithms/               # MeanField, FSSH, and the *ab initio* variants
+    ├── dynamics/                 # run_dynamics core + serial / MP / MPI Drivers
+    ├── models/                   # SpinBoson, Holstein, FMOComplex, Tully I / II / III, AbInitio
+    ├── tasks/                    # Initialization, update, and collect Tasks
+    └── interfaces/               # Q-Chem *ab initio* Interface
