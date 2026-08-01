@@ -15,6 +15,7 @@ modification to the rest of the simulation. This enables users to easily experim
 quantum-classical simulation algorithms and models, allowing for rapid prototyping and testing of new ideas.
 
 This construction is depicted diagrammatically below. Click on any component to learn more about it!
+For a more detailed description of the architecture, see :ref:`Architecture Overview <architecture>`.
 
 
 .. container:: graphviz-center
