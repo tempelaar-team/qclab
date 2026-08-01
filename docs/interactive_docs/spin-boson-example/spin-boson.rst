@@ -7,6 +7,16 @@ Running a Spin-Boson Model
 Here's a simple example of how to run a spin-boson model with mean-field dynamics (also known as Ehrenfest dynamics) in QC Lab.
 A Jupyter Notebook version of this tutorial can be found `here <https://github.com/tempelaar-team/qclab/blob/main/examples/interactive_docs_example.ipynb>`_.
 
+.. card:: Matching video
+   :width: 50%
+   :margin: 3 3 auto auto
+   :link: https://www.youtube.com/watch?v=C1TiIGwQEow
+   :link-type: url
+   :class-card: sd-shadow-sm sd-border-2
+   :class-title: sd-text-center sd-fs-5 sd-mb-0
+   :class-body: sd-p-2
+   :img-top: https://img.youtube.com/vi/C1TiIGwQEow/mqdefault.jpg
+
 
 First, we will need to import the necessary modules:
 
