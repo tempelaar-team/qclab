@@ -596,13 +596,16 @@ def update_eigvecs_gauge(
     eigvals_name: str = "eigvals",
     eigvecs_name: str = "eigvecs",
     eigvecs_previous_name: str = "eigvecs_previous",
-    output_eigvecs_name: str = "eigvecs_name",
+    output_eigvecs_name: str = "eigvecs",
     z_name: str = "z",
     gauge_fixing: str = None,
     dh_qc_dzc_name: str = "dh_qc_dzc",
 ):
     """
     Updates the gauge of the eigenvectors as specified by the gauge_fixing parameter.
+
+    Note that as implemented both state[eigvecs_name] and state[output_eigvecs_name] 
+    will be updated with the gauge-fixed eigenvectors. This is a known issue and will be fixed in a future release.
 
 
     if gauge_fixing == "sign_overlap":
@@ -2473,8 +2476,8 @@ def update_q_velocity_verlet(
     q = functions.z_to_q(z, m[np.newaxis], h[np.newaxis])
     p = functions.z_to_p(z, m[np.newaxis], h[np.newaxis])
     f = classical_force + quantum_classical_force
-    f_dp, f_dq = functions.dzdzc_to_dqdp(None, f, m[np.newaxis], h[np.newaxis])
-    q_dt = q + f_dq * dt_update - 0.5 * (f_dp / m[np.newaxis]) * dt_update**2
+    f_dq, f_dp = functions.dzdzc_to_dqdp(None, f, m[np.newaxis], h[np.newaxis])
+    q_dt = q + f_dp * dt_update - 0.5 * (f_dq / m[np.newaxis]) * dt_update**2
     z_dt = functions.qp_to_z(q_dt, p, m[np.newaxis], h[np.newaxis])
     state[z_name] = z_dt
     return state, parameters
@@ -2542,11 +2545,7 @@ def update_p_velocity_verlet(
         None, f_previous, m[np.newaxis], h[np.newaxis]
     )
     f = classical_force + quantum_classical_force
-    f_previous = classical_force_previous + quantum_classical_force_previous
     f_dq, _ = functions.dzdzc_to_dqdp(None, f, m[np.newaxis], h[np.newaxis])
-    f_dq_previous, _ = functions.dzdzc_to_dqdp(
-        None, f_previous, m[np.newaxis], h[np.newaxis]
-    )
     p_dt = p - 0.5 * (f_dq + f_dq_previous) * dt_update
     q_dt = functions.z_to_q(z, m[np.newaxis], h[np.newaxis])
     z_dt = functions.qp_to_z(q_dt, p_dt, m[np.newaxis], h[np.newaxis])

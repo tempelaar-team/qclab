@@ -206,12 +206,12 @@ def dqdp_to_dzc(dq, dp, m, h):
     """
     dp_present = dp is not None
     dq_present = dq is not None
+    if dq_present and dp_present:
+        return np.sqrt(0.5 / (m * h)) * dq + 1j * np.sqrt(m * h / 2) * dp
     if dp_present:
         return 1j * np.sqrt(m * h / 2) * dp
     if dq_present:
         return np.sqrt(0.5 / (m * h)) * dq.astype(np.complex128)
-    if dq_present and dp_present:
-        return np.sqrt(0.5 / (m * h)) * dq + 1j * np.sqrt(m * h / 2) * dp
     raise ValueError("At least one of dq or dp must be provided.")
 
 

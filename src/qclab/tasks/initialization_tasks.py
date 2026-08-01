@@ -168,7 +168,7 @@ def initialize_z_mcmc(
     z_name: str = "z",
 ):
     """
-    Initializes :ref:`complex classical coordinates <coordinates>` according to Boltzmann statistics using Markov
+    Initializes :ref:`complex-valued classical coordinates <coordinates>` according to Boltzmann statistics using Markov
     Chain Monte Carlo with a Metropolis-Hastings algorithm.
 
     The algorithm has two modes, separable and non-separable. In the separable
