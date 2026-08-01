@@ -88,6 +88,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 html_theme = "pydata_sphinx_theme"  # "bizstyle"#
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_js_files = ["newtab.js"]
 html_theme_options = {
     "secondary_sidebar_items": ["page-toc", "edit-this-page"],
     # "show_toc_level": 2,   # show h2/h3 (your subsections)

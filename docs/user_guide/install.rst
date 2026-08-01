@@ -6,6 +6,16 @@ Installing QC Lab
 
 This guide walks you through installing QC Lab from source or from PyPI, using pip.
 
+.. card:: Matching video
+   :width: 50%
+   :margin: 3 3 auto auto
+   :link: https://www.youtube.com/watch?v=m6VMnZYz22g
+   :link-type: url
+   :class-card: sd-shadow-sm sd-border-2
+   :class-title: sd-text-center sd-fs-5 sd-mb-0
+   :class-body: sd-p-2
+   :img-top: https://img.youtube.com/vi/m6VMnZYz22g/mqdefault.jpg
+
 Requirements
 ------------
 - Python 3.8 or newer.

@@ -8,6 +8,7 @@ User Guide
     :caption: User Guide
 
     install
+    architecture
     ingredient
     task
     model
