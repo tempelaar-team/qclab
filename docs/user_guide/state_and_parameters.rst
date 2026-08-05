@@ -1,8 +1,8 @@
 .. _state-and-parameters:
 
-============================
-State and Parameters Objects
-============================
+====================
+State and Parameters
+====================
 
 The Dynamics Driver creates two dictionaries at the outset of each batch of trajectories: the State object and the Parameters object. Both are ordinary Python dictionaries whose entries are keyed by name. Tasks operate on the State object and, where the Algorithm calls for it, on the Parameters object (see :ref:`Tasks <task>`). Their roles differ, and the sections below describe each in turn.
 
