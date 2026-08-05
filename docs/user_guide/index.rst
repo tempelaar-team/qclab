@@ -9,6 +9,7 @@ User Guide
 
     install
     architecture
+    state_and_parameters
     ingredient
     task
     model
