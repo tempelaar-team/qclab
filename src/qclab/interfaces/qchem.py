@@ -938,13 +938,29 @@ class QCLabQChemInterface:
                                                             s_vo_beta, 
                                                             s_vv_beta,
                                                             )
+        # Opposite-spin excitations factor into two single-spin determinants.
+        overlaps_es_es_alpha_beta = np.outer(overlaps_es_gs_alpha, overlaps_gs_es_beta)
+        overlaps_es_es_beta_alpha = np.outer(overlaps_es_gs_beta, overlaps_gs_es_alpha)
+
         self.results["wf_overlaps"] = np.zeros(
-            (self.num_excited_states + 1, self.num_excited_states + 1)
+            (self.num_excited_states + 1, self.num_excited_states + 1),
+            dtype=np.result_type(overlaps_es_es_alpha, overlaps_es_es_beta),
         )
         self.results["wf_overlaps"][0, 0] = gs_overlap_alpha * gs_overlap_beta
-        self.results["wf_overlaps"][0, 1:] = overlaps_gs_es_alpha + overlaps_gs_es_beta
-        self.results["wf_overlaps"][1:, 0] = overlaps_es_gs_alpha + overlaps_es_gs_beta
-        self.results["wf_overlaps"][1:, 1:] = overlaps_es_es_alpha + overlaps_es_es_beta
+        self.results["wf_overlaps"][0, 1:] = (
+            overlaps_gs_es_alpha * gs_overlap_beta
+            + gs_overlap_alpha * overlaps_gs_es_beta
+        )
+        self.results["wf_overlaps"][1:, 0] = (
+            overlaps_es_gs_alpha * gs_overlap_beta
+            + gs_overlap_alpha * overlaps_es_gs_beta
+        )
+        self.results["wf_overlaps"][1:, 1:] = (
+            overlaps_es_es_alpha * gs_overlap_beta
+            + gs_overlap_alpha * overlaps_es_es_beta
+            + overlaps_es_es_alpha_beta
+            + overlaps_es_es_beta_alpha
+        )
 
     def _get_overlaps_tddft(
             self, 
@@ -1068,13 +1084,29 @@ class QCLabQChemInterface:
             - overlaps_es_es_y_x_beta
             + overlaps_es_es_y_y_beta
         )
+        # The X-Y vectors above give all XX-XY-YX+YY opposite-spin terms.
+        overlaps_es_es_alpha_beta = np.outer(overlaps_es_gs_alpha, overlaps_gs_es_beta)
+        overlaps_es_es_beta_alpha = np.outer(overlaps_es_gs_beta, overlaps_gs_es_alpha)
+
         self.results["wf_overlaps"] = np.zeros(
-            (self.num_excited_states + 1, self.num_excited_states + 1)
+            (self.num_excited_states + 1, self.num_excited_states + 1),
+            dtype=np.result_type(overlaps_es_es_alpha, overlaps_es_es_beta),
         )
         self.results["wf_overlaps"][0, 0] = gs_overlap_alpha * gs_overlap_beta
-        self.results["wf_overlaps"][0, 1:] = overlaps_gs_es_alpha + overlaps_gs_es_beta
-        self.results["wf_overlaps"][1:, 0] = overlaps_es_gs_alpha + overlaps_es_gs_beta
-        self.results["wf_overlaps"][1:, 1:] = overlaps_es_es_alpha + overlaps_es_es_beta
+        self.results["wf_overlaps"][0, 1:] = (
+            overlaps_gs_es_alpha * gs_overlap_beta
+            + gs_overlap_alpha * overlaps_gs_es_beta
+        )
+        self.results["wf_overlaps"][1:, 0] = (
+            overlaps_es_gs_alpha * gs_overlap_beta
+            + gs_overlap_alpha * overlaps_es_gs_beta
+        )
+        self.results["wf_overlaps"][1:, 1:] = (
+            overlaps_es_es_alpha * gs_overlap_beta
+            + gs_overlap_alpha * overlaps_es_es_beta
+            + overlaps_es_es_alpha_beta
+            + overlaps_es_es_beta_alpha
+        )
     
     def _get_matrix_overlaps_s(self, num_electrons, mo_overlaps):
         """
@@ -1094,15 +1126,16 @@ class QCLabQChemInterface:
         """
         ao_overlaps = self._pull_ao_overlaps()
    
-        mo_overlaps_alpha = self.mo_alpha_prev.T @ ao_overlaps @ self.mo_alpha_curr
+        mo_overlaps_alpha = self.mo_alpha_prev.conj().T @ ao_overlaps @ self.mo_alpha_curr
 
-        mo_overlaps_beta = self.mo_beta_prev.T @ ao_overlaps @ self.mo_beta_curr
+        mo_overlaps_beta = self.mo_beta_prev.conj().T @ ao_overlaps @ self.mo_beta_curr
 
         return mo_overlaps_alpha, mo_overlaps_beta
 
     def _compute_overlaps_gs_es(self, excited_amplitudes, s_oo, s_ov):
         """
-        Compute overlap between ground state at geometry 1 and excited states at geometry 2.
+        Compute single-spin GS(1)-ES(2) overlaps, including det(s_oo).
+        The unchanged opposite-spin determinant is supplied by the caller.
         """
         a_matrix = s_oo
         sign, log_determinant = np.linalg.slogdet(a_matrix)
@@ -1114,13 +1147,14 @@ class QCLabQChemInterface:
 
     def _compute_overlaps_es_gs(self, excited_amplitudes, s_oo, s_vo):
         """
-        Compute overlap between excited states at geometry 1 and ground state at geometry 2.
+        Compute single-spin ES(1)-GS(2) overlaps, including det(s_oo).
+        The unchanged opposite-spin determinant is supplied by the caller.
         """
         a_matrix = s_oo
         sign, log_determinant = np.linalg.slogdet(a_matrix)
         determinant_a_matrix = sign * np.exp(log_determinant)
         w_matrix = np.linalg.solve(a_matrix.T, s_vo.T).T
-        x = np.asarray(excited_amplitudes)
+        x = np.asarray(excited_amplitudes).conj()
         overlaps_es_gs = determinant_a_matrix * np.einsum("eia,ai->e", x, w_matrix)
         return overlaps_es_gs
 
@@ -1138,7 +1172,10 @@ class QCLabQChemInterface:
         determinant_a_matrix = sign * np.exp(log_determinant)
         inverse_a_matrix = np.linalg.solve(a_matrix, np.eye(num_occupied_orbitals))
         g_matrix = inverse_a_matrix @ s_ov
-        overlap = np.zeros((x1.shape[0], x2.shape[0]))
+        overlap = np.zeros(
+            (x1.shape[0], x2.shape[0]),
+            dtype=np.result_type(x1, x2, s_oo, s_ov, s_vo, s_vv, np.float64),
+        )
         for j in range(num_occupied_orbitals):
             aj = a_matrix[j, :]
             column_j = inverse_a_matrix[:, j]
