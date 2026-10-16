@@ -231,7 +231,8 @@ class QCLabQChemInterface:
         """
         if kwargs.get(job_spec["name"], {}).get("qchem_args", None) is not None:
             kwargs[job_spec["name"]]["qchem_args"] = {
-                str(k).lower(): v for k, v in kwargs[job_spec["name"]]["qchem_args"].items()
+                str(k).lower(): v
+                for k, v in kwargs[job_spec["name"]]["qchem_args"].items()
             }
             job_spec["qchem_parameters"][self.method_es] = {
                 str(k).lower(): v
@@ -719,7 +720,7 @@ class QCLabQChemInterface:
                 "num_excited_states"
             ] = num_excited_states
             self.results["excited_amplitudes"]["mo_alpha"] = mo_alpha
-            self.results["excited_amplitudes"]["mo_beta"] = mo_beta 
+            self.results["excited_amplitudes"]["mo_beta"] = mo_beta
 
     def _pull_gradient(self, file_obj, num_atoms):
         """
@@ -826,37 +827,29 @@ class QCLabQChemInterface:
         # Create instance attributes needed for computing overlaps.
         self.num_basis_functions = amplitudes_current["num_basis_functions"]
         self.num_alpha_electrons = amplitudes_current["num_alpha_electrons"]
-        self.num_beta_electrons = amplitudes_current["num_beta_electrons"]  
+        self.num_beta_electrons = amplitudes_current["num_beta_electrons"]
         self.num_excited_states = amplitudes_current["num_excited_states"]
-        self.mo_alpha_curr = np.reshape(amplitudes_current["mo_alpha"],
-                                    (
-                                    self.num_basis_functions, 
-                                    self.num_basis_functions
-                                    ),
-                                    order="F",
-                                    )
-        self.mo_beta_curr = np.reshape(amplitudes_current["mo_beta"],
-                                    (
-                                    self.num_basis_functions, 
-                                    self.num_basis_functions
-                                    ),
-                                    order="F",
-                                    )
-        self.mo_alpha_prev = np.reshape(amplitudes_previous["mo_alpha"],
-                                    (
-                                    self.num_basis_functions, 
-                                    self.num_basis_functions
-                                    ), 
-                                    order="F",
-                                    )
-        self.mo_beta_prev = np.reshape(amplitudes_previous["mo_beta"],
-                                    (
-                                    self.num_basis_functions, 
-                                    self.num_basis_functions
-                                    ),
-                                    order="F",
-                                    )  
-        # Extract Atomic orbitals overlaps between two geometries.
+        self.mo_alpha_curr = np.reshape(
+            amplitudes_current["mo_alpha"],
+            (self.num_basis_functions, self.num_basis_functions),
+            order="F",
+        )
+        self.mo_beta_curr = np.reshape(
+            amplitudes_current["mo_beta"],
+            (self.num_basis_functions, self.num_basis_functions),
+            order="F",
+        )
+        self.mo_alpha_prev = np.reshape(
+            amplitudes_previous["mo_alpha"],
+            (self.num_basis_functions, self.num_basis_functions),
+            order="F",
+        )
+        self.mo_beta_prev = np.reshape(
+            amplitudes_previous["mo_beta"],
+            (self.num_basis_functions, self.num_basis_functions),
+            order="F",
+        )
+        # Compute MO overlaps between two geometries from AO overlaps.
         mo_overlaps_alpha, mo_overlaps_beta = self._compute_mo_overlaps()
 
         # Compute overlaps matrices.
@@ -872,7 +865,7 @@ class QCLabQChemInterface:
                 amplitudes_current["y_beta"],
                 mo_overlaps_alpha,
                 mo_overlaps_beta,
-                )
+            )
         elif self.method_es.lower() == "cis":
             self._get_overlaps_cis(
                 amplitudes_previous["x_alpha"],
@@ -881,34 +874,34 @@ class QCLabQChemInterface:
                 amplitudes_current["x_beta"],
                 mo_overlaps_alpha,
                 mo_overlaps_beta,
-                )
+            )
         else:
             raise ValueError(
                 f"Method {self.method_es} not recognized. Supported methods are 'tddft' and 'cis'."
             )
 
     def _get_overlaps_cis(
-            self,
-            alpha_prev, 
-            alpha_curr, 
-            beta_prev, 
-            beta_curr,
-            mo_overlaps_alpha, 
-            mo_overlaps_beta,
-            ):
+        self,
+        alpha_prev,
+        alpha_curr,
+        beta_prev,
+        beta_curr,
+        mo_overlaps_alpha,
+        mo_overlaps_beta,
+    ):
         """
         Compute wavefunction overlaps using the CIS formalism.
 
         The results are stored in ``self.results["wf_overlaps"]`` as a matrix.
         """
         s_oo_alpha, s_ov_alpha, s_vo_alpha, s_vv_alpha = self._get_matrix_overlaps_s(
-                                              self.num_alpha_electrons, 
-                                              mo_overlaps_alpha,
-                                              )
+            self.num_alpha_electrons,
+            mo_overlaps_alpha,
+        )
         s_oo_beta, s_ov_beta, s_vo_beta, s_vv_beta = self._get_matrix_overlaps_s(
-                                              self.num_beta_electrons,
-                                              mo_overlaps_beta,
-                                              )
+            self.num_beta_electrons,
+            mo_overlaps_beta,
+        )
 
         # Compute <GS^(1)|GS^(2)>.
         sing, log_determinant = np.linalg.slogdet(s_oo_alpha)
@@ -916,28 +909,36 @@ class QCLabQChemInterface:
         sing, log_determinant = np.linalg.slogdet(s_oo_beta)
         gs_overlap_beta = sing * np.exp(log_determinant)
         # Compute <GS^(1)|ES_i^(2)>.
-        overlaps_gs_es_alpha = self._compute_overlaps_gs_es(alpha_curr, s_oo_alpha, s_ov_alpha)
-        overlaps_gs_es_beta = self._compute_overlaps_gs_es(beta_curr, s_oo_beta, s_ov_beta)
+        overlaps_gs_es_alpha = self._compute_overlaps_gs_es(
+            alpha_curr, s_oo_alpha, s_ov_alpha
+        )
+        overlaps_gs_es_beta = self._compute_overlaps_gs_es(
+            beta_curr, s_oo_beta, s_ov_beta
+        )
         # Compute <ES_i^(1)|GS^(2)>.
-        overlaps_es_gs_alpha = self._compute_overlaps_es_gs(alpha_prev, s_oo_alpha, s_vo_alpha)
-        overlaps_es_gs_beta = self._compute_overlaps_es_gs(beta_prev, s_oo_beta, s_vo_beta)
+        overlaps_es_gs_alpha = self._compute_overlaps_es_gs(
+            alpha_prev, s_oo_alpha, s_vo_alpha
+        )
+        overlaps_es_gs_beta = self._compute_overlaps_es_gs(
+            beta_prev, s_oo_beta, s_vo_beta
+        )
         # Compute <ES_i^(1)|ES_j^(2)>.
         overlaps_es_es_alpha = self._compute_overlaps_es_es(
-                                                            alpha_prev, 
-                                                            alpha_curr, 
-                                                            s_oo_alpha, 
-                                                            s_ov_alpha, 
-                                                            s_vo_alpha, 
-                                                            s_vv_alpha,
-                                                            )
+            alpha_prev,
+            alpha_curr,
+            s_oo_alpha,
+            s_ov_alpha,
+            s_vo_alpha,
+            s_vv_alpha,
+        )
         overlaps_es_es_beta = self._compute_overlaps_es_es(
-                                                            beta_prev, 
-                                                            beta_curr, 
-                                                            s_oo_beta, 
-                                                            s_ov_beta, 
-                                                            s_vo_beta, 
-                                                            s_vv_beta,
-                                                            )
+            beta_prev,
+            beta_curr,
+            s_oo_beta,
+            s_ov_beta,
+            s_vo_beta,
+            s_vv_beta,
+        )
         # Opposite-spin excitations factor into two single-spin determinants.
         overlaps_es_es_alpha_beta = np.outer(overlaps_es_gs_alpha, overlaps_gs_es_beta)
         overlaps_es_es_beta_alpha = np.outer(overlaps_es_gs_beta, overlaps_gs_es_alpha)
@@ -963,115 +964,131 @@ class QCLabQChemInterface:
         )
 
     def _get_overlaps_tddft(
-            self, 
-            x_alpha_prev, 
-            y_alpha_prev, 
-            x_beta_prev, 
-            y_beta_prev, 
-            x_alpha_curr, 
-            y_alpha_curr, 
-            x_beta_curr, 
-            y_beta_curr, 
-            mo_overlaps_alpha, 
-            mo_overlaps_beta,
-            ):
+        self,
+        x_alpha_prev,
+        y_alpha_prev,
+        x_beta_prev,
+        y_beta_prev,
+        x_alpha_curr,
+        y_alpha_curr,
+        x_beta_curr,
+        y_beta_curr,
+        mo_overlaps_alpha,
+        mo_overlaps_beta,
+    ):
         """
         Compute wavefunction overlaps using the TDDFT formalism.
 
         The results are stored in ``self.results["wf_overlaps"]`` as a matrix.
         """
         s_oo_alpha, s_ov_alpha, s_vo_alpha, s_vv_alpha = self._get_matrix_overlaps_s(
-                                              self.num_alpha_electrons, 
-                                              mo_overlaps_alpha,
-                                              )
+            self.num_alpha_electrons,
+            mo_overlaps_alpha,
+        )
         s_oo_beta, s_ov_beta, s_vo_beta, s_vv_beta = self._get_matrix_overlaps_s(
-                                              self.num_beta_electrons, 
-                                              mo_overlaps_beta,
-                                              )
+            self.num_beta_electrons,
+            mo_overlaps_beta,
+        )
         # Compute <GS^(1)|GS^(2)>.
         sing, log_determinant = np.linalg.slogdet(s_oo_alpha)
         gs_overlap_alpha = sing * np.exp(log_determinant)
         sing, log_determinant = np.linalg.slogdet(s_oo_beta)
         gs_overlap_beta = sing * np.exp(log_determinant)
         # Compute <GS^(1)|ES_i^(2)>.
-        overlaps_gs_es_x_alpha = self._compute_overlaps_gs_es(x_alpha_curr, s_oo_alpha, s_ov_alpha)
-        overlaps_gs_es_y_alpha = self._compute_overlaps_gs_es(y_alpha_curr, s_oo_alpha, s_ov_alpha)
-        overlaps_gs_es_alpha = overlaps_gs_es_x_alpha - overlaps_gs_es_y_alpha  
-        overlaps_gs_es_x_beta = self._compute_overlaps_gs_es(x_beta_curr, s_oo_beta, s_ov_beta)
-        overlaps_gs_es_y_beta = self._compute_overlaps_gs_es(y_beta_curr, s_oo_beta, s_ov_beta)
+        overlaps_gs_es_x_alpha = self._compute_overlaps_gs_es(
+            x_alpha_curr, s_oo_alpha, s_ov_alpha
+        )
+        overlaps_gs_es_y_alpha = self._compute_overlaps_gs_es(
+            y_alpha_curr, s_oo_alpha, s_ov_alpha
+        )
+        overlaps_gs_es_alpha = overlaps_gs_es_x_alpha - overlaps_gs_es_y_alpha
+        overlaps_gs_es_x_beta = self._compute_overlaps_gs_es(
+            x_beta_curr, s_oo_beta, s_ov_beta
+        )
+        overlaps_gs_es_y_beta = self._compute_overlaps_gs_es(
+            y_beta_curr, s_oo_beta, s_ov_beta
+        )
         overlaps_gs_es_beta = overlaps_gs_es_x_beta - overlaps_gs_es_y_beta
         # Compute <ES_i^(1)|GS^(2)>.
-        overlaps_es_gs_x_alpha = self._compute_overlaps_es_gs(x_alpha_prev, s_oo_alpha, s_vo_alpha)
-        overlaps_es_gs_y_alpha = self._compute_overlaps_es_gs(y_alpha_prev, s_oo_alpha, s_vo_alpha)
+        overlaps_es_gs_x_alpha = self._compute_overlaps_es_gs(
+            x_alpha_prev, s_oo_alpha, s_vo_alpha
+        )
+        overlaps_es_gs_y_alpha = self._compute_overlaps_es_gs(
+            y_alpha_prev, s_oo_alpha, s_vo_alpha
+        )
         overlaps_es_gs_alpha = overlaps_es_gs_x_alpha - overlaps_es_gs_y_alpha
-        overlaps_es_gs_x_beta = self._compute_overlaps_es_gs(x_beta_prev, s_oo_beta, s_vo_beta)
-        overlaps_es_gs_y_beta = self._compute_overlaps_es_gs(y_beta_prev, s_oo_beta, s_vo_beta)
-        overlaps_es_gs_beta = overlaps_es_gs_x_beta - overlaps_es_gs_y_beta 
+        overlaps_es_gs_x_beta = self._compute_overlaps_es_gs(
+            x_beta_prev, s_oo_beta, s_vo_beta
+        )
+        overlaps_es_gs_y_beta = self._compute_overlaps_es_gs(
+            y_beta_prev, s_oo_beta, s_vo_beta
+        )
+        overlaps_es_gs_beta = overlaps_es_gs_x_beta - overlaps_es_gs_y_beta
         # Compute <ES_i^(1)|ES_j^(2)>.
         overlaps_es_es_x_x_alpha = self._compute_overlaps_es_es(
-                                                                x_alpha_prev, 
-                                                                x_alpha_curr, 
-                                                                s_oo_alpha, 
-                                                                s_ov_alpha, 
-                                                                s_vo_alpha, 
-                                                                s_vv_alpha,
-                                                                )
+            x_alpha_prev,
+            x_alpha_curr,
+            s_oo_alpha,
+            s_ov_alpha,
+            s_vo_alpha,
+            s_vv_alpha,
+        )
         overlaps_es_es_x_y_alpha = self._compute_overlaps_es_es(
-                                                                x_alpha_prev, 
-                                                                y_alpha_curr, 
-                                                                s_oo_alpha, 
-                                                                s_ov_alpha, 
-                                                                s_vo_alpha, 
-                                                                s_vv_alpha,
-                                                                )
+            x_alpha_prev,
+            y_alpha_curr,
+            s_oo_alpha,
+            s_ov_alpha,
+            s_vo_alpha,
+            s_vv_alpha,
+        )
         overlaps_es_es_y_x_alpha = self._compute_overlaps_es_es(
-                                                                y_alpha_prev, 
-                                                                x_alpha_curr, 
-                                                                s_oo_alpha, 
-                                                                s_ov_alpha, 
-                                                                s_vo_alpha, 
-                                                                s_vv_alpha,
-                                                                )
+            y_alpha_prev,
+            x_alpha_curr,
+            s_oo_alpha,
+            s_ov_alpha,
+            s_vo_alpha,
+            s_vv_alpha,
+        )
         overlaps_es_es_y_y_alpha = self._compute_overlaps_es_es(
-                                                                y_alpha_prev, 
-                                                                y_alpha_curr, 
-                                                                s_oo_alpha, 
-                                                                s_ov_alpha, 
-                                                                s_vo_alpha, 
-                                                                s_vv_alpha,
-                                                                )
+            y_alpha_prev,
+            y_alpha_curr,
+            s_oo_alpha,
+            s_ov_alpha,
+            s_vo_alpha,
+            s_vv_alpha,
+        )
         overlaps_es_es_x_x_beta = self._compute_overlaps_es_es(
-                                                                x_beta_prev, 
-                                                                x_beta_curr, 
-                                                                s_oo_beta, 
-                                                                s_ov_beta, 
-                                                                s_vo_beta, 
-                                                                s_vv_beta,
-                                                                )
+            x_beta_prev,
+            x_beta_curr,
+            s_oo_beta,
+            s_ov_beta,
+            s_vo_beta,
+            s_vv_beta,
+        )
         overlaps_es_es_x_y_beta = self._compute_overlaps_es_es(
-                                                                x_beta_prev, 
-                                                                y_beta_curr, 
-                                                                s_oo_beta, 
-                                                                s_ov_beta, 
-                                                                s_vo_beta, 
-                                                                s_vv_beta,
-                                                                )
+            x_beta_prev,
+            y_beta_curr,
+            s_oo_beta,
+            s_ov_beta,
+            s_vo_beta,
+            s_vv_beta,
+        )
         overlaps_es_es_y_x_beta = self._compute_overlaps_es_es(
-                                                                y_beta_prev, 
-                                                                x_beta_curr, 
-                                                                s_oo_beta, 
-                                                                s_ov_beta, 
-                                                                s_vo_beta, 
-                                                                s_vv_beta,
-                                                                )
+            y_beta_prev,
+            x_beta_curr,
+            s_oo_beta,
+            s_ov_beta,
+            s_vo_beta,
+            s_vv_beta,
+        )
         overlaps_es_es_y_y_beta = self._compute_overlaps_es_es(
-                                                                y_beta_prev, 
-                                                                y_beta_curr, 
-                                                                s_oo_beta, 
-                                                                s_ov_beta, 
-                                                                s_vo_beta, 
-                                                                s_vv_beta,
-                                                                )
+            y_beta_prev,
+            y_beta_curr,
+            s_oo_beta,
+            s_ov_beta,
+            s_vo_beta,
+            s_vv_beta,
+        )
         overlaps_es_es_alpha = (
             overlaps_es_es_x_x_alpha
             - overlaps_es_es_x_y_alpha
@@ -1107,15 +1124,15 @@ class QCLabQChemInterface:
             + overlaps_es_es_alpha_beta
             + overlaps_es_es_beta_alpha
         )
-    
+
     def _get_matrix_overlaps_s(self, num_electrons, mo_overlaps):
         """
-        Compute blocks of the  matrix overlap S. Return the blocks s_oo, s_ov, s_vo, s_vv 
+        Compute blocks of the MO overlap matrix S. Return the blocks s_oo, s_ov, s_vo, s_vv.
         """
-        s_oo = mo_overlaps[0 : num_electrons, 0 : num_electrons]
-        s_ov = mo_overlaps[0 : num_electrons, num_electrons :]
-        s_vo = mo_overlaps[num_electrons :, 0 : num_electrons]
-        s_vv = mo_overlaps[num_electrons :, num_electrons :]
+        s_oo = mo_overlaps[0:num_electrons, 0:num_electrons]
+        s_ov = mo_overlaps[0:num_electrons, num_electrons:]
+        s_vo = mo_overlaps[num_electrons:, 0:num_electrons]
+        s_vv = mo_overlaps[num_electrons:, num_electrons:]
         return s_oo, s_ov, s_vo, s_vv
 
     def _compute_mo_overlaps(self):
@@ -1125,8 +1142,10 @@ class QCLabQChemInterface:
         Returns the molecular orbital overlaps for alpha and beta spin orbitals.
         """
         ao_overlaps = self._pull_ao_overlaps()
-   
-        mo_overlaps_alpha = self.mo_alpha_prev.conj().T @ ao_overlaps @ self.mo_alpha_curr
+
+        mo_overlaps_alpha = (
+            self.mo_alpha_prev.conj().T @ ao_overlaps @ self.mo_alpha_curr
+        )
 
         mo_overlaps_beta = self.mo_beta_prev.conj().T @ ao_overlaps @ self.mo_beta_curr
 
@@ -1237,13 +1256,15 @@ class QCLabQChemInterface:
         Read the excited state amplitudes from the FCHK file generated by Q-Chem.
 
         Extracts the information of the excited state amplitudes for TDDFT or CIS calculations.
-        It only supports closed-shell calculations.
-        The information that is extracted includes the x and y amplitudes for TDDFT or
-        alpha amplitudes for CIS, as well as the number of basis functions,
-        the number of alpha electrons, and the number of excited states.
+        Supports restricted and unrestricted references. The information that is
+        extracted includes the alpha and beta x and y amplitudes for TDDFT (or x
+        amplitudes for CIS), the number of basis functions, the number of alpha and
+        beta electrons, the number of excited states, and the alpha and beta MO
+        coefficients read from the Q-Chem scratch file 53.0.
 
         The results are returned as a tuple of
-        (x_alpha, y_alpha, num_basis_functions, num_alpha_electrons, num_excited_states).
+        (x_alpha, y_alpha, x_beta, y_beta, num_basis_functions, num_alpha_electrons,
+        num_beta_electrons, num_excited_states, mo_alpha, mo_beta).
         """
         file_fchk = self.label + ".fchk"
         with open(file_fchk, "r") as f:
@@ -1253,7 +1274,6 @@ class QCLabQChemInterface:
             "Number of beta electrons",
             "Number of basis functions",
             "Number of Excited States",
-            
         ]
         keywords_to_find_alpha = [
             "Alpha X Amplitudes",
@@ -1273,7 +1293,7 @@ class QCLabQChemInterface:
         keywords_to_stop_beta = [
             "Alpha Y Amplitudes",
             "Dipole_Data",
-            "Number of independent functions",  #for older qchem versions
+            "Number of independent functions",  # For older Q-Chem versions.
         ]
 
         for i, line in enumerate(data):
@@ -1288,12 +1308,16 @@ class QCLabQChemInterface:
                 index_restart = i
 
         # Get molecular coefficients from binary file in Q-Chem scratch folder.
-        qcscratch = os.environ["QCSCRATCH"] # Q-Chem scratch folder.
+        qcscratch = os.environ["QCSCRATCH"]  # Q-Chem scratch folder.
         file_mo_coeff = os.path.join(qcscratch, self.folder_scratch, "53.0")
         data_mo_coeff = np.fromfile(file_mo_coeff, dtype=float)
-        mo_alpha = data_mo_coeff[:num_basis_functions * num_basis_functions]
-        mo_beta = data_mo_coeff[num_basis_functions * num_basis_functions:
-                                2 * num_basis_functions * num_basis_functions]
+        mo_alpha = data_mo_coeff[: num_basis_functions * num_basis_functions]
+        mo_beta = data_mo_coeff[
+            num_basis_functions
+            * num_basis_functions : 2
+            * num_basis_functions
+            * num_basis_functions
+        ]
         x_alpha = []
         y_alpha = []
         x_beta = []
@@ -1336,7 +1360,7 @@ class QCLabQChemInterface:
             if keywords_to_find_beta[2] in line:
                 dimension_amplitudes_beta = int(line.split()[-1])
                 j = i + 1 + index_restart
-                while not any( key in data[j] for key in keywords_to_stop_beta[1:]):
+                while not any(key in data[j] for key in keywords_to_stop_beta[1:]):
                     temp_values = np.array(data[j].split(), dtype=float)
                     x_beta.append(temp_values)
                     y_beta.append(np.zeros_like(temp_values))
@@ -1359,14 +1383,14 @@ class QCLabQChemInterface:
         if (
             num_basis_functions_check_alpha != num_basis_functions
             or num_basis_functions_check_beta != num_basis_functions
-            ):
+        ):
             logger.critical(
                 "The number of basis functions used for Q-Chem does not correspond to "
                 "the number of basis functions determined from the basis set information."
             )
             logger.info(
-                "Q-Chem sometimes automatically projects out near-linear dependencies",
-                "which reduces the number of MOs below the number of basis functions.",
+                "Q-Chem sometimes automatically projects out near-linear dependencies, "
+                "which reduces the number of MOs below the number of basis functions."
             )
             raise ValueError(
                 "The number of basis functions used for Q-Chem does not correspond to "
