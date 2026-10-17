@@ -1,0 +1,13 @@
+# Python caches and local environments
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Package and documentation build output
+src/qclab.egg-info/
+build/
+docs/_build/
+
+# macOS metadata
+.DS_Store

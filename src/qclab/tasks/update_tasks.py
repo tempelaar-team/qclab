@@ -384,12 +384,13 @@ def update_quantum_classical_force(
     h_q_tot_name: str = "h_q_tot",
     derivative_coupling_dzc_name: str = "derivative_coupling_dzc",
     update_dh_qc_dzc_flag: bool = True,
+    quantum_classical_force_base_name: str = None,
 ):
     """
     Updates the quantum-classical force w.r.t. the wavefunction defined by ``wf_db``.
 
-    If the model has a ``gauge_field_force`` ingredient, this term will be added
-    to the quantum-classical force.
+    If ``sim.algorithm.settings.use_gauge_field_force`` is ``True``, 
+    the gauge field force will be included in the quantum-classical force.
 
     If the model has a ``derivative_coupling_dzc`` ingredient, this contribution will
     be added to the quantum-classical force.
@@ -413,6 +414,12 @@ def update_quantum_classical_force(
         Name under which to store the total Hamiltonian in the State object.
     derivative_coupling_dzc_name:
         Name of the derivative coupling tensor in the State object.
+    update_dh_qc_dzc_flag:
+        If ``True``, the gradient of the quantum-classical Hamiltonian is updated.
+    quantum_classical_force_base_name:
+        Name under which to store the quantum-classical force excluding the gauge
+        field force in the State object. Defaults to
+        ``quantum_classical_force_name + "_base"``.
 
     Constants and Settings
     ----------------------
@@ -425,6 +432,8 @@ def update_quantum_classical_force(
     -----------
     derivative_coupling_dzc:
         Derivative coupling tensor.
+    gauge_field_force:
+        Gauge field force. Only used if ``use_gauge_field_force`` is ``True``.
 
     Reads
     -----
@@ -438,9 +447,14 @@ def update_quantum_classical_force(
         Total quantum Hamiltonian.
     state[derivative_coupling_dzc_name]: ndarray of shape (B, C, N, N), dtype=complex128 (optional)
         The derivative coupling tensor.
+    state[state_ind_name]: ndarray of shape (B,), dtype=int (optional)
+        Index of the adiabatic state for the gauge field force. Only read if
+        ``use_gauge_field_force`` is ``True``.
 
     Writes
     ------
+    state[quantum_classical_force_base_name]: ndarray of shape (B, C), dtype=complex128
+        Quantum-classical force excluding the gauge field force.
     state[quantum_classical_force_name]: ndarray of shape (B, C), dtype=complex128
         Quantum-classical force.
 
@@ -449,6 +463,8 @@ def update_quantum_classical_force(
     * B = sim.settings.batch_size
     * C = sim.model.constants.num_classical_coordinates
     """
+    if quantum_classical_force_base_name is None:
+        quantum_classical_force_base_name = quantum_classical_force_name + "_base"
     z = state[z_name]
     wf_db = state[wf_db_name]
     if update_dh_qc_dzc_flag:
@@ -459,19 +475,21 @@ def update_quantum_classical_force(
     # Calculate the expectation value w.r.t. the wavefunction.
     # If not(wf_changed) and sim.model.update_dh_qc_dzc then recalculate.
     # If wf_changed then recalculate.
-    # If quantum_classical_force_name not in state then recalculate.
+    # If quantum_classical_force_base_name not in state then recalculate.
+    # The gauge field force is excluded from the base force because it depends
+    # explicitly on z and so must be evaluated at every call.
     if (
-        not (quantum_classical_force_name in state)
+        not (quantum_classical_force_base_name in state)
         or wf_changed
         or (not (wf_changed) and sim.model.update_dh_qc_dzc)
     ):
-        if not (quantum_classical_force_name in state):
-            state[quantum_classical_force_name] = np.zeros_like(z)
-        state[quantum_classical_force_name] = functions.calc_sparse_inner_product(
+        if not (quantum_classical_force_base_name in state):
+            state[quantum_classical_force_base_name] = np.zeros_like(z)
+        state[quantum_classical_force_base_name] = functions.calc_sparse_inner_product(
             *state[dh_qc_dzc_name],
             wf_db.conj(),
             wf_db,
-            out=state[quantum_classical_force_name].reshape(-1),
+            out=state[quantum_classical_force_base_name].reshape(-1),
         ).reshape(np.shape(z))
         # Add force arising from derivative coupling if it is defined in the model.
         if derivative_coupling_dzc_name in state:
@@ -485,12 +503,23 @@ def update_quantum_classical_force(
                 wf_db,
                 optimize="greedy",
             )
-            state[quantum_classical_force_name] += derivative_coupling_force
+            state[quantum_classical_force_base_name] += derivative_coupling_force
     if sim.algorithm.settings.get("use_gauge_field_force"):
+        # Rebuild the total force from the base force so that the gauge field
+        # force is not accumulated when the base force is reused.
+        state[quantum_classical_force_name] = state[
+            quantum_classical_force_base_name
+        ].copy()
         state, parameters = add_gauge_field_force(
-            sim, state, parameters, z=z, state_ind_name=state_ind_name
+            sim,
+            state,
+            parameters,
+            z_name=z_name,
+            adb_state_ind_name=state_ind_name,
+            quantum_classical_force_name=quantum_classical_force_name,
         )
-
+    else:
+        state[quantum_classical_force_name] = state[quantum_classical_force_base_name]
     return state, parameters
 
 
@@ -653,7 +682,7 @@ def update_eigvecs_gauge(
         Eigenvectors of the total quantum Hamiltonian.
     state[eigvecs_previous_name]: ndarray of shape (B, N, N), dtype=complex128
         Eigenvectors of the total quantum Hamiltonian at the prior timestep.
-    state[dh_qc_dzc]: tuple
+    state[dh_qc_dzc_name]: tuple
 
     Writes
     ------
@@ -666,8 +695,8 @@ def update_eigvecs_gauge(
     * N = sim.model.constants.num_quantum_states
     """
     eigvals = state[eigvals_name]
-    eigvecs = state[eigvecs_name]
-    eigvecs_previous = state[eigvecs_previous_name]
+    eigvecs = state[eigvecs_name].copy()
+    eigvecs_previous = state[eigvecs_previous_name].copy()
     if gauge_fixing is None:
         gauge_fixing = sim.algorithm.settings.gauge_fixing
     gauge_fixing_numerical_values = {
@@ -2303,15 +2332,15 @@ def update_wf_adb_hop_prob(
 
     .. math::
 
-        g_{a \to \beta} = ( \int_{t}^{t+\Delta} b_{\beta a}(t') dt' ) / (c^{*}_{a}(t)c_{a}(t))
+        g_{a \\to \\beta} = ( \\int_{t}^{t+\\Delta} b_{\\beta a}(t') dt' ) / (c^{*}_{a}(t)c_{a}(t))
 
     .. math::
 
-        b_{\beta a}(t) = -2\Re(c_{\beta}^{*}(t)c_{a}(t) A_{\beta a}(t))
+        b_{\\beta a}(t) = -2\\Re(c_{\\beta}^{*}(t)c_{a}(t) A_{\\beta a}(t))
 
     .. math::
 
-        A_{\beta a}(t) = \dot{q}(t) \cdot d_{\beta a}(t)
+        A_{\\beta a}(t) = \\dot{q}(t) \\cdot d_{\\beta a}(t)
 
     Note that this is consistent with Eq. 19-21 for real and complex :math:`d_{\beta a}`.
 
@@ -2319,7 +2348,7 @@ def update_wf_adb_hop_prob(
 
     .. math::
 
-        b_{\beta a}(t) = -2\Re(c_{\beta}(t)c_{a}^{*}(t) A_{\beta a}(t))
+        b_{\\beta a}(t) = -2\\Re(c_{\\beta}(t)c_{a}^{*}(t) A_{\\beta a}(t))
 
     Optional Keyword Arguments
     --------------------------
