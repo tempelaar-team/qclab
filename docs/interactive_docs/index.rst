@@ -7,7 +7,7 @@ Quick Menu
 
 
 
-Welcome to the QC Lab documentation! Use the buttons below to indicate what you want
+Welcome to the QC Lab documentation! Use the buttons below to indicate what you want to do.
 
 .. button-link:: ../user_guide/install.html
     :color: primary

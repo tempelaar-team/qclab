@@ -53,7 +53,7 @@ well-defined responsibilities.
 
 Two further dictionaries — the **State object** and the
 **Parameters object** — are utilized by the Dynamics Driver. See
-:ref:`State and Parameters Objects <state-and-parameters>` for
+:ref:`State and Parameters <state-and-parameters>` for
 details.
 
 ----
