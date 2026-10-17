@@ -633,6 +633,9 @@ def update_eigvecs_gauge(
     """
     Updates the gauge of the eigenvectors as specified by the gauge_fixing parameter.
 
+    Note that as implemented both state[eigvecs_name] and state[output_eigvecs_name] 
+    will be updated with the gauge-fixed eigenvectors. This is a known issue and will be fixed in a future release.
+
 
     if gauge_fixing == "sign_overlap":
         The sign of the eigenvector is changed so the real part of its

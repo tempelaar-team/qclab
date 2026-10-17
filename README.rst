@@ -64,6 +64,13 @@ from inside its topmost directory (where the `pyproject.toml` file is located).
 QC Lab doesn’t enforce third-party dependencies. If you hit resolver conflicts or install errors, the quickest fix is to install in a clean Python environment (via `venv` or `conda`). Alternatively, reconcile package versions in your existing environment until the requirements are satisfied.
 
 
+Using AI with QC Lab
+--------------------
+
+The QC Lab source code comes equipped with a Claude skill. It is located in `ai/claude/qclab`
+and symlinked to `.claude/skills/qclab` for autodiscovery by Claude code. 
+
+
 Bibliography
 ------------
 
