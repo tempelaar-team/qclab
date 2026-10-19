@@ -6,8 +6,10 @@ compares them against a reference dataset.
 import pytest
 import os
 import time
+from functools import partial
 import numpy as np
 from qclab import Simulation, Data
+from qclab import tasks
 from qclab.models import (
     SpinBoson,
     HolsteinLattice,
@@ -188,7 +190,11 @@ def test_output_fssh_gauge_fixing():
         state["eigvecs"] = random_phases[:, np.newaxis, :] * state["eigvecs"]
         return state, parameters
 
-    my_FSSH.initialization_recipe.insert(6, add_random_phase)
+    diagonalization_index = next(
+        index for index, task in enumerate(my_FSSH.initialization_recipe)
+        if (task.func if isinstance(task, partial) else task) is tasks.diagonalize_matrix
+    )
+    my_FSSH.initialization_recipe.insert(diagonalization_index + 1, add_random_phase)
     for model_class in [
         SpinBoson,
         HolsteinLattice,

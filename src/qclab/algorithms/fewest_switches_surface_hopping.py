@@ -27,6 +27,7 @@ class FewestSwitchesSurfaceHopping(Algorithm):
         tasks.initialize_norm_factor,
         tasks.initialize_branch_seeds,
         tasks.initialize_z,
+        tasks.initialize_local_diabatization,
         tasks.update_h_q_tot,
         partial(
             tasks.diagonalize_matrix,
@@ -54,6 +55,7 @@ class FewestSwitchesSurfaceHopping(Algorithm):
     ]
 
     update_recipe = [
+        tasks.begin_local_diabatic_step,
         partial(tasks.copy_in_state, copy_name="eigvecs_previous", orig_name="eigvecs"),
         # Begin RK4 integration steps.
         tasks.update_classical_force,
@@ -96,6 +98,7 @@ class FewestSwitchesSurfaceHopping(Algorithm):
         # End RK4 integration steps.
         tasks.update_wf_db_propagator,
         tasks.update_h_q_tot,
+        tasks.update_local_diabatic_endpoint,
         partial(
             tasks.diagonalize_matrix,
             matrix_name="h_q_tot",
@@ -116,15 +119,17 @@ class FewestSwitchesSurfaceHopping(Algorithm):
         tasks.update_z_hop,
         tasks.update_act_surf_hop,
         tasks.update_act_surf_wf,
+        tasks.commit_local_diabatic_step,
     ]
 
     collect_recipe = [
         tasks.update_t,
         tasks.update_dm_db_fssh,
+        tasks.update_local_diabatic_density,
         tasks.update_quantum_energy_act_surf,
         tasks.update_classical_energy_fssh,
         tasks.collect_t,
-        tasks.collect_dm_db,
+        tasks.collect_local_diabatic_density,
         tasks.collect_quantum_energy,
         tasks.collect_classical_energy,
     ]
@@ -167,8 +172,6 @@ class FewestSwitchesSurfaceHoppingAbInitio(Algorithm):
         tasks.update_h_q_tot,
         tasks.update_classical_force,
         tasks.update_derivative_coupling_dzc,
-        partial(tasks.update_quantum_classical_force, wf_db_name="wf_adb"),
-        partial(tasks.update_adb_connection, update_derivative_coupling=False),
         tasks.initialize_random_values_fssh,
         tasks.initialize_active_surface,
         tasks.initialize_dm_adb_0_fssh,
@@ -179,6 +182,8 @@ class FewestSwitchesSurfaceHoppingAbInitio(Algorithm):
             eigvecs_name="eigvecs",
         ),
         tasks.update_act_surf_wf,
+        partial(tasks.update_quantum_classical_force, wf_db_name="act_surf_wf"),
+        partial(tasks.update_adb_connection, update_derivative_coupling=False),
         tasks.update_quantum_energy_act_surf,
         tasks.update_classical_energy_fssh,
     ]

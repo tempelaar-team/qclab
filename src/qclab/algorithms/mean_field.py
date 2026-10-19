@@ -22,10 +22,12 @@ class MeanField(Algorithm):
         tasks.initialize_variable_objects,
         tasks.initialize_norm_factor,
         tasks.initialize_z,
+        tasks.initialize_local_diabatization,
         tasks.update_h_q_tot,
     ]
 
     update_recipe = [
+        tasks.begin_local_diabatic_step,
         # Begin RK4 integration steps.
         partial(tasks.update_classical_force, z_name="z"),
         tasks.update_quantum_classical_force,
@@ -60,15 +62,17 @@ class MeanField(Algorithm):
         # End RK4 integration steps.
         tasks.update_wf_db_rk4,
         tasks.update_h_q_tot,
+        tasks.commit_local_diabatic_step,
     ]
 
     collect_recipe = [
         tasks.update_t,
         tasks.update_dm_db_wf,
+        tasks.update_local_diabatic_density,
         tasks.update_quantum_energy_wf,
         tasks.update_classical_energy,
         tasks.collect_t,
-        tasks.collect_dm_db,
+        tasks.collect_local_diabatic_density,
         tasks.collect_classical_energy,
         tasks.collect_quantum_energy,
     ]

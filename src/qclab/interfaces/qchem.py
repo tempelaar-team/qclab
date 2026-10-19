@@ -2,7 +2,10 @@
 This module contains the Q-Chem interface for ab initio calculations.
 """
 
+import copy
+import itertools
 import os
+import re
 import subprocess
 import logging
 import numpy as np
@@ -27,17 +30,82 @@ class QCLabQChemInterface:
         num_procs=1,
         **kwargs,
     ):
-        self.method_es = kwargs["method_es"]
-
-        # Set default parameters.
-        if kwargs.get("exchange", None) is None:
-            kwargs["exchange"] = "B3LYP"
-            self.method_es = "tddft"
-        if kwargs.get("basis", None) is None:
-            kwargs["basis"] = "6-31G*"
-        # Ensuring that all kwargs are lowercase.
         kwargs = {str(k).lower(): v for k, v in kwargs.items()}
-        self.method_es = self.method_es.lower()
+        self.method_es = str(kwargs.pop("method_es", "tddft")).lower()
+        if self.method_es not in ("cis", "tddft"):
+            raise ValueError("Q-Chem method_es must be 'cis' or 'tddft'.")
+        explicit_tda = "tda" in kwargs
+        legacy_rpa = kwargs.get("rpa", False)
+        self.tda = self._logical(
+            kwargs.pop("tda", not (legacy_rpa == 2 or self._logical(legacy_rpa, "rpa"))),
+            "tda",
+        )
+        self.use_etfs = self._logical(kwargs.pop("use_etfs", True), "use_etfs")
+        aliases = [kwargs.pop(key) for key in ("xc", "functional") if key in kwargs]
+        if aliases:
+            exchange = kwargs.get("exchange", aliases[0])
+            if any(str(value).lower() != str(exchange).lower() for value in aliases):
+                raise ValueError("xc, functional, and exchange must specify the same functional.")
+            kwargs["exchange"] = exchange
+        if kwargs.get("exchange") is None:
+            kwargs["exchange"] = "HF" if self.method_es == "cis" else "B3LYP"
+        if kwargs.get("basis") is None:
+            kwargs["basis"] = "6-31G*"
+        explicit_spin = kwargs.pop("excited_multiplicity", None)
+        spin_adapted_selection = explicit_spin is not None
+        if explicit_spin is None:
+            default_triplets = (not self._logical(kwargs["cis_singlets"], "cis_singlets")
+                                if "cis_singlets" in kwargs else False)
+            triplets = self._logical(kwargs.get("cis_triplets", default_triplets), "cis_triplets")
+            singlets = self._logical(kwargs.get("cis_singlets", not triplets), "cis_singlets")
+            explicit_spin = (1 if singlets else 3) if singlets != triplets else None
+        if spin_adapted_selection and (isinstance(explicit_spin, bool) or explicit_spin not in (1, 3)):
+            raise ValueError("excited_multiplicity must be 1 or 3.")
+        self.excited_multiplicity = explicit_spin
+        for name, expected in (("cis_singlets", explicit_spin == 1),
+                               ("cis_triplets", explicit_spin == 3)):
+            if spin_adapted_selection and name in kwargs and self._logical(kwargs[name], name) != expected:
+                raise ValueError("%s contradicts excited_multiplicity." % name)
+            kwargs.setdefault(name, expected)
+        unrestricted = self._logical(kwargs.get("unrestricted", False), "unrestricted")
+        spin_flip = kwargs.get("spin_flip", False) not in (False, 0, "FALSE", "false")
+        if spin_adapted_selection:
+            if int(kwargs.get("multiplicity", 1)) != 1:
+                raise ValueError("Spin-adapted Q-Chem states require a singlet reference (multiplicity=1).")
+            if unrestricted or spin_flip:
+                raise ValueError("Spin-adapted Q-Chem states require a restricted reference without spin_flip.")
+        elif unrestricted or spin_flip or int(kwargs.get("multiplicity", 1)) != 1:
+            # Legacy open-shell roots are not spin-pure; do not impose scalar
+            # singlet/triplet zeros on those calculations.
+            self.excited_multiplicity = None
+        if explicit_tda and "rpa" in kwargs and (legacy_rpa == 2 or self._logical(legacy_rpa, "rpa")) != (not self.tda):
+            raise ValueError("rpa contradicts tda; use tda=False for full TDDFT.")
+        if self.method_es == "cis" and not self.tda:
+            raise ValueError("CIS requires tda=True.")
+        kwargs.setdefault("rpa", not self.tda)
+        kwargs.setdefault("set_quadratic", False)
+        num_states = kwargs.pop("num_quantum_states", None)
+        roots = kwargs.get("cis_n_roots")
+        if isinstance(roots, str):
+            roots = int(roots)
+        selected = kwargs.pop("excited_state_indices", None)
+        if selected is None:
+            count = self._integer(num_states, "num_quantum_states", 1) - 1 if num_states is not None else self._integer(roots or 0, "cis_n_roots", 0)
+            selected = tuple(range(count))
+        else:
+            selected = tuple(self._integer(ind, "excited_state_indices", 0) for ind in selected)
+            if len(set(selected)) != len(selected):
+                raise ValueError("excited_state_indices must contain unique indices.")
+        if num_states is not None and len(selected) != self._integer(num_states, "num_quantum_states", 1) - 1:
+            raise ValueError("excited_state_indices must contain num_quantum_states - 1 roots.")
+        required_roots = max(selected, default=-1) + 1
+        if roots is not None and self._integer(roots, "cis_n_roots", 0) < required_roots:
+            raise ValueError("cis_n_roots must include every selected excited_state_indices root.")
+        kwargs["cis_n_roots"] = max(required_roots, self._integer(roots or 0, "cis_n_roots", 0))
+        self.excited_state_indices = selected
+        self.state_indices = (0,) + tuple(ind + 1 for ind in selected)
+        self.num_quantum_states = len(self.state_indices)
+        self._native_to_state = {native: ind for ind, native in enumerate(self.state_indices)}
         # Create atoms dict.
         atoms = {}
         for i, atom_name in enumerate(atom_names):
@@ -65,116 +133,48 @@ class QCLabQChemInterface:
             "frequency",
             "wf_overlaps",
         ]
-        # Job specifications for Q-Chem input file.
-        self.job_templates = {
-            "energy": {
-                "name": "energy",
-                "write_derivative_coupling": False,
-                "excited_amplitudes": False,
-                "qchem_parameters": {
-                    "cis": {
-                        "jobtype": "SP",
-                        "cis_n_roots": self.kwargs.get("cis_n_roots"),
-                        "cis_singlets": self.kwargs.get("cis_singlets"),
-                        "cis_triplets": self.kwargs.get("cis_triplets"),
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                    "tddft": {
-                        "jobtype": "SP",
-                        "cis_n_roots": self.kwargs.get("cis_n_roots"),
-                        "cis_singlets": self.kwargs.get("cis_singlets"),
-                        "cis_triplets": self.kwargs.get("cis_triplets"),
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                },
-            },
-            "gradient": {
-                "name": "gradient",
-                "write_derivative_coupling": False,
-                "qchem_parameters": {
-                    "cis": {
-                        "jobtype": "FORCE",
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                    "tddft": {
-                        "jobtype": "FORCE",
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                },
-            },
-            "frequency": {
-                "name": "frequency",
-                "write_derivative_coupling": False,
-                "qchem_parameters": {
-                    "cis": {
-                        "jobtype": "FREQ",
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                    "tddft": {
-                        "jobtype": "FREQ",
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                },
-            },
-            "derivative_coupling": {
-                "name": "derivative_coupling",
-                "write_derivative_coupling": True,
-                "qchem_parameters": {
-                    "cis": {
-                        "jobtype": "SP",
-                        "basis": self.kwargs.get("basis"),
-                        "method": self.kwargs.get("exchange"),
-                        "cis_n_roots": self.kwargs.get("cis_n_roots"),
-                        "cis_singlets": self.kwargs.get("cis_singlets"),
-                        "cis_triplets": self.kwargs.get("cis_triplets"),
-                        "calc_nac": "TRUE",
-                        "cis_der_numstate": int(self.kwargs.get("cis_n_roots")) + 1,
-                        "sym_ignore": "TRUE",
-                    },
-                    "tddft": {
-                        "jobtype": "SP",
-                        "basis": self.kwargs.get("basis"),
-                        "method": self.kwargs.get("exchange"),
-                        "cis_n_roots": self.kwargs.get("cis_n_roots"),
-                        "cis_singlets": self.kwargs.get("cis_singlets"),
-                        "cis_triplets": self.kwargs.get("cis_triplets"),
-                        "calc_nac": "TRUE",
-                        "cis_der_numstate": int(self.kwargs.get("cis_n_roots")) + 1,
-                        "sym_ignore": "TRUE",
-                    },
-                },
-            },
-            "wf_overlaps": {
-                "name": "wf_overlaps",
-                "write_derivative_coupling": False,
-                "qchem_parameters": {
-                    "cis": {
-                        "jobtype": "SP",
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                    "tddft": {
-                        "jobtype": "SP",
-                        "basis": self.kwargs.get("basis"),
-                        "exchange": self.kwargs.get("exchange"),
-                        "sym_ignore": "TRUE",
-                    },
-                },
-            },
-        }
+        # Keep the same electronic model in every property and overlap job.
+        shared = {key: copy.deepcopy(value) for key, value in kwargs.items()
+                  if key not in ("charge", "multiplicity")}
+        shared.setdefault("sym_ignore", True)
+        self._shared_parameters = shared
+        self.job_templates = {}
+        for name, jobtype in (("energy", "SP"), ("gradient", "FORCE"),
+                              ("frequency", "FREQ"), ("derivative_coupling", "SP"),
+                              ("wf_overlaps", "SP")):
+            params = dict(shared, jobtype=jobtype)
+            if name == "derivative_coupling":
+                params.update(calc_nac=True, cis_der_numstate=self.num_quantum_states)
+            self.job_templates[name] = {
+                "name": name,
+                "write_derivative_coupling": name == "derivative_coupling",
+                "qchem_parameters": {self.method_es: params},
+            }
+
+    @staticmethod
+    def _logical(value, name):
+        """Interpret Q-Chem logical values without treating 'FALSE' as true."""
+        if value in (True, 1) or str(value).lower() == "true":
+            return True
+        if value in (False, 0) or str(value).lower() == "false":
+            return False
+        raise ValueError("%s must be a boolean." % name)
+
+    @staticmethod
+    def _integer(value, name, minimum):
+        if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
+            raise ValueError("%s must be an integer >= %d." % (name, minimum))
+        return int(value)
+
+    def _state_list(self, indices):
+        if indices is None:
+            return list(range(self.num_quantum_states))
+        if isinstance(indices, (int, np.integer)):
+            indices = [indices]
+        states = [self._integer(ind, "state index", 0) for ind in indices]
+        if any(ind >= self.num_quantum_states for ind in states):
+            raise ValueError("Requested state index is outside the selected state space.")
+        return states
 
     def execute(self):
         """
@@ -207,7 +207,7 @@ class QCLabQChemInterface:
         # Check if the asked properties are implemented.
         self._check_requested_properties(properties)
         properties = list(dict.fromkeys(properties))
-        return [self.job_templates[p].copy() for p in properties]
+        return [copy.deepcopy(self.job_templates[p]) for p in properties]
 
     def _check_requested_properties(self, job_requested):
         """
@@ -229,20 +229,28 @@ class QCLabQChemInterface:
         """
         Add parameters from kwargs to job_spec.
         """
-        if kwargs.get(job_spec["name"], {}).get("qchem_args", None) is not None:
-            kwargs[job_spec["name"]]["qchem_args"] = {
-                str(k).lower(): v
-                for k, v in kwargs[job_spec["name"]]["qchem_args"].items()
-            }
-            job_spec["qchem_parameters"][self.method_es] = {
-                str(k).lower(): v
-                for k, v in job_spec["qchem_parameters"][self.method_es].items()
-            }
-            for key, value in kwargs[job_spec["name"]]["qchem_args"].items():
-                if key in job_spec["qchem_parameters"][self.method_es]:
-                    job_spec["qchem_parameters"][self.method_es][key] = value
-                elif key not in job_spec["qchem_parameters"][self.method_es]:
-                    job_spec["qchem_parameters"][self.method_es][key] = value
+        overrides = kwargs.get(job_spec["name"], {}).get("qchem_args") or {}
+        protected = {"exchange", "correlation", "method", "basis", "purecart",
+                     "cis_n_roots", "cis_singlets", "cis_triplets", "rpa",
+                     "unrestricted", "spin_flip", "set_quadratic", "xc_grid",
+                     "scf_convergence", "cis_convergence", "thresh"}
+        structural = {"exchange", "correlation", "method", "basis", "purecart",
+                      "cis_n_roots", "cis_singlets", "cis_triplets", "rpa",
+                      "unrestricted", "spin_flip", "set_quadratic"}
+        for key, value in overrides.items():
+            key = str(key).lower()
+            expected = self._shared_parameters.get(key)
+            if key == "method":
+                expected = self._shared_parameters["exchange"]
+            # An absent structural setting still has a program default. Adding
+            # it to one job can change its spin or AO basis relative to the
+            # other properties and invalidate the overlap representation.
+            if (key in structural and expected is None) or (
+                key in protected and expected is not None
+                and str(value).lower() != str(expected).lower()
+            ):
+                raise ValueError("Set shared Q-Chem parameter %s in calculator_args, not per property." % key)
+            job_spec["qchem_parameters"][self.method_es][key] = value
         return job_spec
 
     def _write_job(self, file_obj, job_spec, **kwargs):
@@ -283,7 +291,7 @@ class QCLabQChemInterface:
             else:
                 self._write_comments(file_obj, job["name"], ind=i)
                 self._write_molecule_section(file_obj, ind=i)
-                if job["name"] == "energy" and kwargs["energy"]["excited_amplitudes"]:
+                if job["name"] == "energy" and kwargs["energy"].get("excited_amplitudes", False):
                     job["qchem_parameters"][self.method_es]["GUI"] = "2"
                     job["qchem_parameters"][self.method_es]["IQMOL_FCHK"] = "TRUE"
                 if job["name"] == "derivative_coupling":
@@ -293,12 +301,10 @@ class QCLabQChemInterface:
                             "state_inds_derivative_coupling", None
                         ),
                     )
-                    if len(self.state_inds_derivative_coupling) != int(
-                        job["qchem_parameters"][self.method_es].get("cis_der_numstate")
-                    ):
-                        job["qchem_parameters"][self.method_es]["cis_der_numstate"] = (
-                            len(self.state_inds_derivative_coupling)
-                        )
+                    job["qchem_parameters"][self.method_es]["cis_der_numstate"] = (
+                        len(self.state_inds_derivative_coupling)
+                        if job["write_derivative_coupling"] else 0
+                    )
                 self._write_rem_section(
                     file_obj,
                     job,
@@ -315,13 +321,7 @@ class QCLabQChemInterface:
 
         If no indices are provided, defaults to all states (ground + excited).
         """
-        if state_inds_gradient is None:
-            num_states = int(self.kwargs.get("cis_n_roots")) + 1
-            return [i for i in range(num_states)]
-        elif isinstance(state_inds_gradient, (int, np.integer)):
-            return [state_inds_gradient]
-        else:
-            return state_inds_gradient
+        return self._state_list(state_inds_gradient)
 
     def _write_gradient_jobs(
         self, file_obj, job_spec, flag=0, state_inds_gradient=None
@@ -330,7 +330,10 @@ class QCLabQChemInterface:
         Handles the writing for gradient jobs requested.
         """
         self.state_inds_gradient = self._get_state_inds_gradient(state_inds_gradient)
-        for j, i in enumerate(self.state_inds_gradient):
+        for j, state_ind in enumerate(self.state_inds_gradient):
+            job_spec = copy.deepcopy(job_spec)
+            i = self.state_indices[state_ind]
+            job_spec["qchem_parameters"][self.method_es].pop("cis_state_deriv", None)
             if i > 0:
                 job_spec["qchem_parameters"][self.method_es]["cis_state_deriv"] = str(i)
                 job_spec["qchem_parameters"][self.method_es]["cis_n_roots"] = (
@@ -461,23 +464,37 @@ class QCLabQChemInterface:
         If no indices are provided, defaults to all states (ground + excited) as specified
         by cis_der_numstate (cis_n_roots+1) in the input file.
         """
-        if state_inds_derivative_coupling is None:
-            n_s = int(job["qchem_parameters"][self.method_es].get("cis_der_numstate"))
-            state_inds_derivative_coupling = [i for i in range(n_s)]
-        elif isinstance(state_inds_derivative_coupling, (int, np.integer)):
-            state_inds_derivative_coupling = [
-                i for i in range(state_inds_derivative_coupling + 1)
-            ]
-        self.state_inds_derivative_coupling = state_inds_derivative_coupling
+        indices = state_inds_derivative_coupling
+        if isinstance(indices, (int, np.integer)):
+            indices = list(range(indices + 1))
+        if indices is not None and np.asarray(indices).ndim == 2:
+            pairs = []
+            for pair in indices:
+                if len(pair) != 2:
+                    raise ValueError("Derivative-coupling pairs must contain two states.")
+                pair = tuple(self._state_list(pair))
+                if pair[0] == pair[1]:
+                    raise ValueError("Derivative-coupling pairs must contain distinct states.")
+                pairs.append(pair)
+            states = sorted({ind for pair in pairs for ind in pair})
+        else:
+            states = self._state_list(indices)
+            pairs = list(itertools.combinations(states, 2))
+        self._requested_coupling_pairs = pairs
+        # The reference has a different spin from every triplet target. Its
+        # scalar derivative couplings vanish and need not be sent to Q-Chem.
+        self.state_inds_derivative_coupling = [self.state_indices[ind] for ind in states
+                                              if self.excited_multiplicity != 3 or ind != 0]
+        if len(self.state_inds_derivative_coupling) < 2:
+            job["write_derivative_coupling"] = False
+            job["qchem_parameters"][self.method_es]["calc_nac"] = False
 
     def _write_derivative_coupling(self, file_obj, job):
         """
         Write the $derivative_coupling section to the Q-Chem input file.
         """
         file_obj.write("$derivative_coupling\n")
-        file_obj.write(
-            f"{self.state_inds_derivative_coupling[0]} is the reference state\n"
-        )
+        file_obj.write("Native Q-Chem state indices (0 is the SCF reference)\n")
         file_obj.write(
             " ".join(str(s) for s in self.state_inds_derivative_coupling) + "\n"
         )
@@ -495,7 +512,12 @@ class QCLabQChemInterface:
             Keyword arguments keyed by property name (e.g. 'energy', 'gradient').
             Each value is a dict of options specific to that property.
         """
+        kwargs = {key: value for key, value in kwargs.items()
+                  if value.get("calc_property", True)}
         properties = kwargs.keys()
+        if not properties:
+            self.results = {}
+            return
         if properties is None:
             properties = ["energy"]
         properties = [prop.lower() for prop in properties]
@@ -654,40 +676,24 @@ class QCLabQChemInterface:
         Optionally extracts excited state amplitudes from the FCHK file.
         Stores 'energy' (and 'excited_amplitudes' if requested) in ``self.results``.
         """
-        # Get the number of states to be extracted from the output file.
-        if self.kwargs.get("cis_n_roots") is None:
-            nt_states = 1
-        else:
-            nt_states = int(self.kwargs.get("cis_n_roots")) + 1
-
-        keywords_for_gs_energy = [
-            "SCF time:",
-            "Timing for Total SCF",
-            "Total energy in the final basis set",
-        ]
-        keywords_for_excited_energy = ["Total energy for state"]
-
-        i = 0
-        energy = np.zeros(nt_states)
+        energies = {}
         for j, line in enumerate(file_obj):
-            # Extract ground state energy.
-            if any(word in line for word in keywords_for_gs_energy):
+            excited = re.search(r"Total energy for state\s+(\d+)\s*[:=]?\s+([-+\d.EeDd]+)", line)
+            if excited:
+                energies[int(excited.group(1))] = float(excited.group(2).replace("D", "E").replace("d", "e"))
+            elif "energy in the final basis set" in line.lower():
+                energies[0] = float(line.split()[-1])
+            elif 0 not in energies and ("SCF time:" in line or "Timing for Total SCF" in line):
+                # Keep compatibility with output variants whose total energy is
+                # printed two lines after the SCF timing header.
                 try:
-                    energy[i] = float(file_obj[j + 2].split()[-1])
-                    i += 1
-                except:
+                    energies[0] = float(file_obj[j + 2].split()[-1])
+                except (ValueError, IndexError):
                     pass
-            # Extract excited state energies.
-            elif any(word in line for word in keywords_for_excited_energy):
-                if i >= nt_states:
-                    logger.warning(
-                        "More states found in output file than specified by cis_n_roots."
-                        " Only the first %d states will be extracted." % nt_states
-                    )
-                    break
-                energy[i] = float(line.split()[-2])
-                i += 1
-        self.results["energy"] = energy
+        missing = set(self.state_indices) - set(energies)
+        if missing:
+            raise ValueError("Q-Chem output is missing total energies for native states %s." % sorted(missing))
+        self.results["energy"] = np.array([energies[ind] for ind in self.state_indices])
         # Extract excited state amplitudes if requested.
         if excited_amplitudes:
             self.results["excited_amplitudes"] = {}
@@ -721,6 +727,26 @@ class QCLabQChemInterface:
             ] = num_excited_states
             self.results["excited_amplitudes"]["mo_alpha"] = mo_alpha
             self.results["excited_amplitudes"]["mo_beta"] = mo_beta
+            self.results["excited_amplitudes"] = self._project_amplitudes(self.results["excited_amplitudes"])
+
+    def _project_amplitudes(self, amplitudes):
+        """Copy a snapshot into the selected response-root order exactly once."""
+        amplitudes = copy.deepcopy(amplitudes)
+        if "state_indices" in amplitudes:
+            if tuple(amplitudes["state_indices"]) != self.state_indices:
+                raise ValueError("Q-Chem amplitude snapshots use different selected states.")
+            if amplitudes.get("excited_multiplicity", self.excited_multiplicity) != self.excited_multiplicity:
+                raise ValueError("Q-Chem amplitude snapshots use different spin manifolds.")
+            return amplitudes
+        for key in ("x_alpha", "y_alpha", "x_beta", "y_beta"):
+            values = np.asarray(amplitudes[key])
+            if max(self.excited_state_indices, default=-1) >= len(values):
+                raise ValueError("Q-Chem amplitude snapshot does not contain every selected response root.")
+            amplitudes[key] = values[list(self.excited_state_indices)].copy()
+        amplitudes["num_excited_states"] = len(self.excited_state_indices)
+        amplitudes["state_indices"] = self.state_indices
+        amplitudes["excited_multiplicity"] = self.excited_multiplicity
+        return amplitudes
 
     def _pull_gradient(self, file_obj, num_atoms):
         """
@@ -765,13 +791,14 @@ class QCLabQChemInterface:
                 stop_ind = jndx.max() + 1
         self.results["gradient"] = gradient
 
-    def _pull_derivative_coupling(self, file_obj, num_atoms, etf=True):
+    def _pull_derivative_coupling(self, file_obj, num_atoms, etf=None):
         """
         Parse derivative couplings between electronic states from Q-Chem output.
 
         Stores 'derivative_coupling' in ``self.results`` as a dictionary
         keyed by state-pair tuples.
         """
+        etf = self.use_etfs if etf is None else etf
         l_states = []  # Line that identifies the states involved in derivative coupling
         l_etf = (
             []
@@ -796,15 +823,30 @@ class QCLabQChemInterface:
             i_st = int(temp[-3])
             j_st = int(temp[-1])
             # Base line for derivative coupling values.
-            base = l_etf[i] if etf else l_no_etf[i]
+            locations = l_etf if etf else l_no_etf
+            if i >= len(locations):
+                raise ValueError("Q-Chem output is missing requested %s ETF derivative couplings." % ("with" if etf else "without"))
+            base = locations[i]
             for j in range(num_atoms):
                 derivative_coupling_matrix[j, :] = np.array(
                     file_obj[base + 3 + j].split()[1:], dtype=float
                 )
-            derivative_coupling_dictionary[(i_st, j_st)] = (
-                derivative_coupling_matrix.copy()
-            )
-        self.results["derivative_coupling"] = derivative_coupling_dictionary
+            if i_st in self._native_to_state and j_st in self._native_to_state:
+                pair = (self._native_to_state[i_st], self._native_to_state[j_st])
+                # Native Q-Chem output is 1/Bohr; the calculator contract is 1/Angstrom.
+                derivative_coupling_dictionary[pair] = derivative_coupling_matrix.copy() * numerical_constants.ANGSTROM_TO_BOHR
+        requested = getattr(self, "_requested_coupling_pairs", list(itertools.combinations(range(self.num_quantum_states), 2)))
+        selected = {}
+        for pair in requested:
+            if self.excited_multiplicity == 3 and 0 in pair:
+                selected[pair] = np.zeros((num_atoms, 3))
+            elif pair in derivative_coupling_dictionary:
+                selected[pair] = derivative_coupling_dictionary[pair]
+            elif pair[::-1] in derivative_coupling_dictionary:
+                selected[pair] = -derivative_coupling_dictionary[pair[::-1]]
+            else:
+                raise ValueError("Q-Chem output is missing derivative coupling for selected states %s." % (pair,))
+        self.results["derivative_coupling"] = selected
 
     def _pull_overlaps(self, amplitudes_previous=None, amplitudes_current=None):
         """
@@ -824,6 +866,8 @@ class QCLabQChemInterface:
                 "Current excited state amplitudes must be provided \n"
                 "to compute wavefunction overlaps."
             )
+        amplitudes_previous = self._project_amplitudes(amplitudes_previous)
+        amplitudes_current = self._project_amplitudes(amplitudes_current)
         # Create instance attributes needed for computing overlaps.
         self.num_basis_functions = amplitudes_current["num_basis_functions"]
         self.num_alpha_electrons = amplitudes_current["num_alpha_electrons"]
@@ -853,7 +897,7 @@ class QCLabQChemInterface:
         mo_overlaps_alpha, mo_overlaps_beta = self._compute_mo_overlaps()
 
         # Compute overlaps matrices.
-        if self.method_es.lower() == "tddft":
+        if self.method_es.lower() == "tddft" and not self.tda:
             self._get_overlaps_tddft(
                 amplitudes_previous["x_alpha"],
                 amplitudes_previous["y_alpha"],
@@ -866,7 +910,7 @@ class QCLabQChemInterface:
                 mo_overlaps_alpha,
                 mo_overlaps_beta,
             )
-        elif self.method_es.lower() == "cis":
+        elif self.method_es.lower() == "cis" or self.tda:
             self._get_overlaps_cis(
                 amplitudes_previous["x_alpha"],
                 amplitudes_current["x_alpha"],
@@ -879,6 +923,9 @@ class QCLabQChemInterface:
             raise ValueError(
                 f"Method {self.method_es} not recognized. Supported methods are 'tddft' and 'cis'."
             )
+        if self.excited_multiplicity == 3:
+            self.results["wf_overlaps"][0, 1:] = 0.0
+            self.results["wf_overlaps"][1:, 0] = 0.0
 
     def _get_overlaps_cis(
         self,
@@ -1452,6 +1499,8 @@ class QCLabQChemInterface:
         """
         Write the Q-Chem input file for the requested properties.
         """
+        kwargs = {key: value for key, value in kwargs.items()
+                  if value.get("calc_property", True)}
         properties = kwargs.keys()
         filename = self.label + ".inp"
         job_specs = self._build_job_specs(properties)

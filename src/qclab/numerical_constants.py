@@ -54,6 +54,9 @@ H_J_S = 6.62607015e-34
 # Boltzmann constant [J/K].
 K_B_J_PER_K = 1.380649e-23
 
+# Boltzmann constant [Hartree/K], using the exact eV-to-joule conversion.
+K_B_HA_PER_K = K_B_J_PER_K / (HA_TO_EV * 1.602176634e-19)
+
 # Reduced Planck constant [J*s].
 HBAR_J_S = H_J_S / (2 * np.pi)
 

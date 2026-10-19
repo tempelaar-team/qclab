@@ -27,6 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pyscf = [
+    "pyscf>=2.14,<2.15",
+]
 tests = [
     "pytest",
     "mpi4py",

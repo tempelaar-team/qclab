@@ -6,6 +6,7 @@ import numpy as np
 import copy
 from qclab import functions
 from qclab import numerical_constants
+from qclab.interfaces import QCLabPySCFInterface
 from qclab.utils import DISABLE_ASE
 
 if not (DISABLE_ASE):
@@ -684,12 +685,145 @@ def gauge_field_force_zero(model, parameters, **kwargs):
     return np.zeros_like(z)
 
 
+def ab_initio_property_calculator(model, parameters, **kwargs):
+    """Dispatch ab initio property requests to the selected calculator.
+
+    The ``calculator`` model constant selects ``qchem`` (the default) or
+    ``pyscf``. Custom calculator ingredients can still replace this dispatcher.
+    """
+    calculator = model.constants.get("calculator", "qchem")
+    if calculator == "qchem":
+        return ab_initio_property_calculator_qchem(model, parameters, **kwargs)
+    if calculator == "pyscf":
+        return ab_initio_property_calculator_pyscf(model, parameters, **kwargs)
+    raise ValueError("calculator must be 'qchem' or 'pyscf'.")
+
+
+def _slice_property_argument(argument, traj_ind):
+    """Extract batched property arguments while preserving opaque snapshots."""
+    if isinstance(argument, np.ndarray):
+        return copy.deepcopy(argument[traj_ind])
+    if isinstance(argument, dict):
+        return {
+            key: _slice_property_argument(value, traj_ind)
+            for key, value in argument.items()
+        }
+    return copy.deepcopy(argument)
+
+
+def _calculator_config_signature(value):
+    """Make nested calculator configuration comparable without array equality."""
+    if isinstance(value, np.ndarray):
+        if value.dtype.hasobject:
+            return (value.shape, _calculator_config_signature(value.tolist()))
+        return (value.shape, value.dtype.str, value.tobytes())
+    if isinstance(value, dict):
+        return tuple(
+            (key, _calculator_config_signature(value[key]))
+            for key in sorted(value, key=repr)
+        )
+    if isinstance(value, (tuple, list)):
+        return tuple(_calculator_config_signature(item) for item in value)
+    return value
+
+
+@functions.vectorize_ingredient
+def ab_initio_property_calculator_pyscf(model, parameters, **kwargs):
+    """Calculate batched ab initio properties with trajectory-local PySCF reuse.
+
+    Coordinates in ``property_dict`` are QC Lab complex coordinates. Calculator
+    instances live in ``parameters['_pyscf_calculators']`` for the current batch;
+    geometry changes are handled by the interface and configuration changes create
+    a fresh instance. Outputs follow the existing ab initio property contract.
+    """
+    traj_ind = kwargs["traj_ind"]
+    cache_traj_ind = kwargs.get("cache_traj_ind", traj_ind)
+    constants = model.constants
+    properties = {key: None for key in kwargs["property_dict"]}
+    active_properties = {}
+    atom_positions = None
+    num_coordinates = constants.num_classical_coordinates
+    masses = constants.classical_coordinate_mass
+    weights = constants.classical_coordinate_weight
+
+    for property_name, arguments in kwargs["property_dict"].items():
+        arguments = _slice_property_argument(arguments, traj_ind)
+        if not arguments.get("calc_property", True):
+            continue
+        z = arguments.get("z")
+        if z is not None:
+            if np.shape(z) != (num_coordinates,):
+                raise ValueError(
+                    "Property coordinates must contain one Cartesian coordinate per atom axis."
+                )
+            positions = functions.z_to_q(z, masses, weights).reshape((-1, 3))
+            if not np.all(np.isfinite(positions)):
+                raise ValueError("Property atom positions must be finite.")
+            if atom_positions is not None and not np.array_equal(positions, atom_positions):
+                raise ValueError("All properties in one PySCF request must use the same geometry.")
+            atom_positions = positions
+        if property_name == "wf_overlaps" and arguments.get("z_previous") is not None:
+            z_previous = arguments["z_previous"]
+            if np.shape(z_previous) != (num_coordinates,):
+                raise ValueError("Previous property coordinates have the wrong shape.")
+            arguments["atom_positions_previous"] = functions.z_to_q(
+                z_previous, masses, weights
+            ).reshape((-1, 3))
+        active_properties[property_name] = arguments
+
+    if not active_properties:
+        return properties
+    if atom_positions is None:
+        atom_positions = np.asarray(constants.atom_positions, dtype=float)
+
+    calculator_args = copy.deepcopy(constants.calculator_args)
+    signature = _calculator_config_signature(
+        {
+            "calculator_args": calculator_args,
+            "atom_names": constants.atom_names,
+            "atom_masses": constants.atom_masses,
+            "num_quantum_states": constants.num_quantum_states,
+        }
+    )
+    cache = parameters.setdefault("_pyscf_calculators", {})
+    cached = cache.get(cache_traj_ind)
+    if cached is None or cached["signature"] != signature:
+        calculator = QCLabPySCFInterface(
+            atom_positions=atom_positions,
+            atom_masses=constants.atom_masses,
+            atom_names=constants.atom_names,
+            num_quantum_states=constants.num_quantum_states,
+            **calculator_args,
+        )
+        cache[cache_traj_ind] = {"signature": signature, "calculator": calculator}
+    else:
+        calculator = cached["calculator"]
+    try:
+        properties.update(calculator.calculate(active_properties, atom_positions=atom_positions))
+    except RuntimeError as error:
+        seeds = parameters.get("seed")
+        seed_context = (
+            ", seed %s" % seeds[cache_traj_ind]
+            if seeds is not None and 0 <= cache_traj_ind < len(seeds) else ""
+        )
+        raise RuntimeError(
+            "PySCF calculation failed for trajectory %s%s at atom_positions_bohr=%s: %s"
+            % (cache_traj_ind, seed_context,
+               np.array2string(atom_positions, precision=10, separator=","), error)
+        ) from error
+    return properties
+
+
 @functions.vectorize_ingredient
 def ab_initio_property_calculator_qchem(model, parameters, **kwargs):
     """
     Ab initio property calculator for Q-Chem.
 
     """
+    if DISABLE_ASE:
+        raise ImportError(
+            "The Q-Chem calculator requires ASE; install ase or select calculator='pyscf'."
+        )
     property_dict = kwargs["property_dict"]
     traj_ind = kwargs["traj_ind"]
     properties = {}
@@ -700,10 +834,14 @@ def ab_initio_property_calculator_qchem(model, parameters, **kwargs):
     atom_names = model.constants.atom_names
     atom_masses = model.constants.atom_masses
     atom_positions = model.constants.atom_positions
-    method_es = model.constants.calculator_args["method_es"]
-    qchem_gs_args = model.constants.calculator_args["qchem_gs_args"]
-    qchem_es_args = model.constants.calculator_args["qchem_es_args"]
-    file_label = str(parameters["seed"][traj_ind])
+    calculator_args = copy.deepcopy(model.constants.calculator_args)
+    qchem_gs_args = calculator_args.pop("qchem_gs_args", {})
+    qchem_es_args = calculator_args.pop("qchem_es_args", {})
+    calculator_args = {**qchem_gs_args, **qchem_es_args, **calculator_args}
+    calculator_args.setdefault("num_quantum_states", num_quantum_states)
+    # Nested single-trajectory requests retain their original batch identity.
+    cache_traj_ind = kwargs.get("cache_traj_ind", traj_ind)
+    file_label = str(parameters["seed"][cache_traj_ind])
 
     new_property_dict = copy.deepcopy(property_dict)
     properties = {}
@@ -712,13 +850,13 @@ def ab_initio_property_calculator_qchem(model, parameters, **kwargs):
         for arg_key in property_args.keys():
             if type(property_args[arg_key]) is np.ndarray:
                 property_args[arg_key] = property_args[arg_key][traj_ind]
-        if not (property_args["z"] is None):
+        if property_args.get("z") is not None:
             # Update nuclear configuration if z is provided.
             # Assumes all z are the same.
             z = property_args["z"]
             q = functions.z_to_q(z, m, h)
             atom_positions = q.reshape((num_classical_coordinates // 3, 3))
-        if property == "wf_overlaps":
+        if property == "wf_overlaps" and property_args.get("z_previous") is not None:
             # Update previous nuclear configuration if z_previous is provided.
             # Assumes all z_previous are the same.
             z_previous = property_args["z_previous"]
@@ -742,15 +880,15 @@ def ab_initio_property_calculator_qchem(model, parameters, **kwargs):
             atom_names=atom_names,
             label="qchem_job_" + file_label,
             folder_scratch="qclab_job_" + file_label,
-            **{"method_es": method_es, **qchem_gs_args, **qchem_es_args},
+            **calculator_args,
         )
         calc.write_input(**new_property_dict)
         calc.execute()
         calc.read_results(**new_property_dict)
         # Anything not calculated gets overwritten with the result.
         properties = {**properties, **calc.results}
-        if "gradient" in properties.keys():
-            state_inds_gradient = property_args.get("state_inds_gradient", None)
+        if calc.results.get("gradient") is not None:
+            state_inds_gradient = new_property_dict["gradient"].get("state_inds_gradient")
             if isinstance(state_inds_gradient, (int, np.integer)):
                 state_inds_gradient = [state_inds_gradient]
             if state_inds_gradient is None:

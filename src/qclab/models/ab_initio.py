@@ -1,6 +1,8 @@
 """
-This module contains the Atomic Simulation Environment (ASE) Model class.
+This module contains the model for ab initio dynamics.
 """
+
+import copy
 
 import numpy as np
 from qclab.functions import (
@@ -16,7 +18,6 @@ from qclab import ingredients
 from qclab.numerical_constants import (
     ANGSTROM_TO_BOHR,
 )
-import copy
 
 
 class AbInitio(Model):
@@ -33,9 +34,11 @@ class AbInitio(Model):
             "atom_positions": None,  # In units of Bohr.
             "atom_masses": None,  # In units of electron mass.
             "atom_names": None,
+            "calculator": "qchem",
             "calculator_args": {},
             "num_quantum_states": None,
-            "normal_mode": None,  # Unitless and normalilzed.
+            "normal_mode": None,  # Columns with shape (coordinates, modes).
+            "normal_mode_convention": "legacy",
             "harmonic_frequency": None,  # In units of Hartrees.
             "energy_offset": 0,  # In units of Hartrees.
             "kBT": 0.00095,  # In units of Hartrees.
@@ -47,9 +50,9 @@ class AbInitio(Model):
     def _init_model(self, parameters, **kwargs):
         num_atoms = len(self.constants.atom_names)
         self.constants.num_classical_coordinates = num_atoms * 3
-        self.constants.classical_coordinate_mass = (
-            self.constants.atom_masses[np.newaxis] * np.ones((3, num_atoms))
-        ).flatten()
+        self.constants.classical_coordinate_mass = np.repeat(
+            np.asarray(self.constants.atom_masses, dtype=float), 3
+        )
         self.constants.classical_coordinate_weight = np.ones(
             self.constants.num_classical_coordinates
         )
@@ -57,41 +60,80 @@ class AbInitio(Model):
         self.constants.finite_difference_delta = 1e-2
 
     def init_classical(self, parameters, **kwargs):
-        # Temporarily set the masses to 1 for mass-weighted normal mode sampling.
-        normal_modes = self.constants.normal_mode
-        constants_original = copy.deepcopy(self.constants)
-        self.constants = Constants()
-        # Set number of coordinates to number of normal modes.
-        self.constants.num_classical_coordinates = len(
-            constants_original.harmonic_frequency
-        )
-        self.constants.classical_coordinate_mass = np.ones(
-            self.constants.num_classical_coordinates
-        )
-        self.constants.harmonic_frequency = constants_original.harmonic_frequency
-        self.constants.classical_coordinate_weight = self.constants.harmonic_frequency
-        self.constants.kBT = constants_original.kBT
+        """Sample harmonic modes without changing the model constants.
+
+        ``mass_weighted`` modes are orthonormal eigenvectors of the mass-weighted
+        Cartesian Hessian. ``legacy`` retains the historical Cartesian projection.
+        Frequencies must be positive and in atomic units in either convention.
+        """
+        constants = self.constants
+        if constants.normal_mode is None or constants.harmonic_frequency is None:
+            raise ValueError(
+                "Wigner initialization requires normal_mode and harmonic_frequency; "
+                "use init_classical_definite_position_momentum for fixed coordinates."
+            )
+        if np.iscomplexobj(constants.harmonic_frequency) and np.any(
+            np.imag(constants.harmonic_frequency) != 0
+        ):
+            raise ValueError("Wigner initialization requires real, positive harmonic frequencies.")
+        if np.iscomplexobj(constants.normal_mode) and np.any(
+            np.imag(constants.normal_mode) != 0
+        ):
+            raise ValueError("Wigner initialization requires real normal modes.")
+        normal_modes = np.asarray(np.real(constants.normal_mode), dtype=float)
+        frequencies = np.asarray(np.real(constants.harmonic_frequency), dtype=float)
+        convention = constants.normal_mode_convention
+        if convention not in {"legacy", "mass_weighted"}:
+            raise ValueError("normal_mode_convention must be 'legacy' or 'mass_weighted'.")
+        if frequencies.ndim != 1 or not np.all(np.isfinite(frequencies)):
+            raise ValueError("harmonic_frequency must be a finite one-dimensional array.")
+        if np.any(frequencies <= 0):
+            raise ValueError("Wigner initialization requires positive harmonic frequencies.")
+        expected_shape = (constants.num_classical_coordinates, len(frequencies))
+        if normal_modes.shape != expected_shape or not np.all(np.isfinite(normal_modes)):
+            raise ValueError("normal_mode must have shape (coordinates, modes) and be finite.")
+        masses = constants.classical_coordinate_mass
+        if not np.all(np.isfinite(masses)) or np.any(masses <= 0):
+            raise ValueError("Atomic masses must be finite and positive.")
+        if convention == "mass_weighted" and not np.allclose(
+            normal_modes.T @ normal_modes,
+            np.eye(len(frequencies)),
+            rtol=1e-7,
+            atol=1e-8,
+        ):
+            raise ValueError("Mass-weighted normal modes must have orthonormal columns.")
+
+        # A local model supplies unit-mass oscillators to the standard sampler.
+        # Keep the original Constants object and its update callback intact.
+        mode_model = copy.copy(self)
+        mode_model.constants = Constants()
+        mode_model.constants.num_classical_coordinates = len(frequencies)
+        mode_model.constants.classical_coordinate_mass = np.ones(len(frequencies))
+        mode_model.constants.harmonic_frequency = frequencies
+        mode_model.constants.classical_coordinate_weight = frequencies
+        mode_model.constants.kBT = constants.kBT
         z_normal_mode = ingredients.init_classical_wigner_harmonic(
-            self, parameters, **kwargs
+            mode_model, parameters, **kwargs
         )
         # Convert back to phase-space normal coordinates.
         q_normal_mode = z_to_q(
             z_normal_mode,
-            self.constants.classical_coordinate_mass[np.newaxis],
-            self.constants.classical_coordinate_weight[np.newaxis],
+            mode_model.constants.classical_coordinate_mass[np.newaxis],
+            mode_model.constants.classical_coordinate_weight[np.newaxis],
         )
         p_normal_mode = z_to_p(
             z_normal_mode,
-            self.constants.classical_coordinate_mass[np.newaxis],
-            self.constants.classical_coordinate_weight[np.newaxis],
+            mode_model.constants.classical_coordinate_mass[np.newaxis],
+            mode_model.constants.classical_coordinate_weight[np.newaxis],
         )
         # Convert back to Cartesian coordinates.
-        q = (
-            np.einsum("tm, cm ->tc", q_normal_mode, normal_modes)
-            + constants_original.init_position
-        )
+        q = np.einsum("tm,cm->tc", q_normal_mode, normal_modes)
         p = np.einsum("tm, cm ->tc", p_normal_mode, normal_modes)
-        self.constants = constants_original
+        if convention == "mass_weighted":
+            sqrt_mass = np.sqrt(masses)
+            q = q / sqrt_mass
+            p = p * sqrt_mass
+        q = q + constants.init_position
         z = qp_to_z(
             q,
             p,
@@ -137,6 +179,7 @@ class AbInitio(Model):
                     parameters,
                     batch_size=1,
                     property_dict=property_dict,
+                    cache_traj_ind=traj_ind,
                 )[0]
                 diag_h_qc = (
                     properties["energy"][:num_quantum_states]
@@ -187,6 +230,7 @@ class AbInitio(Model):
                     parameters,
                     batch_size=1,
                     property_dict=property_dict,
+                    cache_traj_ind=traj_ind,
                 )[0]
                 for state_ind in range(num_quantum_states):
                     # Convert to derivative w.r.t. zc.
@@ -242,6 +286,7 @@ class AbInitio(Model):
                     parameters,
                     batch_size=1,
                     property_dict=property_dict,
+                    cache_traj_ind=traj_ind,
                 )[0]
                 derivative_coupling_dq = properties["derivative_coupling"]
                 for key, val in derivative_coupling_dq.items():
@@ -256,7 +301,7 @@ class AbInitio(Model):
     ingredients = [
         (
             "ab_initio_property_calculator",
-            ingredients.ab_initio_property_calculator_qchem,
+            ingredients.ab_initio_property_calculator,
         ),
         ("h_q", h_q),
         ("h_qc", h_qc),
