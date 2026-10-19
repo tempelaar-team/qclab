@@ -11,6 +11,15 @@ from qclab.models.fmo_complex import FMOComplex
 from qclab.models.tully_problem_one import TullyProblemOne
 from qclab.models.tully_problem_two import TullyProblemTwo
 from qclab.models.tully_problem_three import TullyProblemThree
+from qclab.models.geometric_phase_avoided_crossing_a import (
+    GeometricPhaseAvoidedCrossingA,
+)
+from qclab.models.geometric_phase_avoided_crossing_b import (
+    GeometricPhaseAvoidedCrossingB,
+)
+from qclab.models.geometric_phase_avoided_crossing_c import (
+    GeometricPhaseAvoidedCrossingC,
+)
 from qclab.utils import DISABLE_ASE
 if not(DISABLE_ASE):
     from qclab.models.ab_initio import AbInitio
