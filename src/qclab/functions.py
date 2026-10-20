@@ -6,6 +6,7 @@ dynamics drivers.
 
 import logging
 import functools
+import math
 import numpy as np
 from qclab.utils import njit
 import qclab.numerical_constants as numerical_constants

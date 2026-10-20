@@ -16,11 +16,6 @@ class ComplexAvoidedCrossingB(Model):
     https://doi.org/10.1103/PhysRevA.109.032210.
     """
 
-    # Coordinate, row and column indices of the 8 dh_qc_dzc entries per trajectory.
-    DH_QC_DZC_COORD_INDS = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=int)
-    DH_QC_DZC_ROW_INDS = np.array([0, 0, 1, 1, 0, 0, 1, 1], dtype=int)
-    DH_QC_DZC_COL_INDS = np.array([0, 1, 0, 1, 0, 1, 0, 1], dtype=int)
-
     def __init__(self, constants=None):
         if constants is None:
             constants = {}
@@ -213,11 +208,14 @@ class ComplexAvoidedCrossingB(Model):
         dh_00_dzc = functions.dqdp_to_dzc(dh_00_dq, None, m, h)
         dh_01_dzc = functions.dqdp_to_dzc(dh_01_dq, None, m, h)
         # Order per trajectory: x then y, each with elements 00, 01, 10, 11.
+        dh_qc_dzc_coord_inds = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=int)
+        dh_qc_dzc_row_inds = np.array([0, 0, 1, 1, 0, 0, 1, 1], dtype=int)
+        dh_qc_dzc_col_inds = np.array([0, 1, 0, 1, 0, 1, 0, 1], dtype=int)
         inds = (
             np.repeat(np.arange(batch_size, dtype=int), 8),
-            np.tile(DH_QC_DZC_COORD_INDS, batch_size),
-            np.tile(DH_QC_DZC_ROW_INDS, batch_size),
-            np.tile(DH_QC_DZC_COL_INDS, batch_size),
+            np.tile(dh_qc_dzc_coord_inds, batch_size),
+            np.tile(dh_qc_dzc_row_inds, batch_size),
+            np.tile(dh_qc_dzc_col_inds, batch_size),
         )
         mels = np.empty((batch_size, 2, 4), dtype=complex)
         mels[:, :, 0] = dh_00_dzc
