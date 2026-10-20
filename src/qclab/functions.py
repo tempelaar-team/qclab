@@ -6,12 +6,32 @@ dynamics drivers.
 
 import logging
 import functools
+import math
 import numpy as np
 from qclab.utils import njit
 import qclab.numerical_constants as numerical_constants
 
 logger = logging.getLogger(__name__)
 
+@njit
+def erf_jit(x):
+    """
+    Error function of each element of a one-dimensional array.
+
+    Parameters
+    ----------
+    x : ndarray of shape (B,), dtype=float64
+        Input values.
+
+    Returns
+    -------
+    out : ndarray of shape (B,), dtype=float64
+        Error function of each element.
+    """
+    out = np.empty(x.shape[0])
+    for idx in range(x.shape[0]):
+        out[idx] = math.erf(x[idx])
+    return out
 
 def batch_matvec(mat, vec):
     """
