@@ -56,6 +56,8 @@ Additional optional Ingredients that make the simulation more efficient or accur
 - A gradient of the classical Hamiltonian Ingredient with respect to the conjugate of the :ref:`complex classical coordinates <coordinates>`, named ``dh_c_dzc``.
 - A gradient of the quantum-classical interaction Hamiltonian Ingredient with respect to the conjugate of the :ref:`complex classical coordinates <coordinates>`, named ``dh_qc_dzc``.
 - A hop Ingredient for surface hopping algorithms, named ``hop``.
+- A rescaling-direction Ingredient for surface hopping algorithms, named ``rescaling_direction_fssh``, which supplies a gauge-fixed momentum-rescaling direction (used by FSSH and MSMASH).
+- A focused initial-wavefunction sampling Ingredient for MSMASH, named ``sample_wf_db_msmash``, for Model objects whose diabatic basis is not the site (real-space) basis. It is called as ``sample_wf_db_msmash(model, parameters, wf_db=wf_db, seeds=seeds)`` and returns the sampled diabatic wavefunction with shape ``(batch_size, num_quantum_states)``.
 - An *ab initio* property calculator Ingredient that calculates physical properties with an interface to an electronic structure theory code, named ``ab_initio_property_calculator``.
 
 
