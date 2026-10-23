@@ -26,6 +26,7 @@ The following algorithms are implemented making use of the complex-classical coo
 
 * Mean-field (Ehrenfest) dynamics [2]
 * Fewest-switches surface hopping (FSSH) dynamics [3]
+* MultiState Mapping Approach to Surface Hopping (MSMASH) dynamics [9]
 * Ab Initio Mean-Field dynamics
 * Ab Initio FSSH dynamics
 
@@ -82,3 +83,5 @@ Bibliography
 6. Fenna, R. E.; Matthews, B. W. Chlorophyll Arrangement in a Bacteriochlorophyll Protein from Chlorobium Limicola. Nature 1975, 258 (5536), 573–577. https://doi.org/10.1038/258573a0.
 7. Mulvihill, E.; Lenn, K. M.; Gao, X.; Schubert, A.; Dunietz, B. D.; Geva, E. Simulating Energy Transfer Dynamics in the Fenna–Matthews–Olson Complex via the Modified Generalized Quantum Master Equation. J. Chem. Phys. 2021, 154 (20), 204109. https://doi.org/10.1063/5.0051101.
 8. Tully, J. C. Molecular Dynamics with Electronic Transitions. J. Chem. Phys. 1990, 93 (2), 1061–1071. https://doi.org/10.1063/1.459170.
+9. Runeson, J. E.; Manolopoulos, D. E. A Multi-State Mapping Approach to Surface Hopping. J. Chem. Phys. 2023, 159 (9), 094115. https://doi.org/10.1063/5.0158147
+
