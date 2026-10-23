@@ -7,3 +7,6 @@ from qclab.algorithms.fewest_switches_surface_hopping import (
     FewestSwitchesSurfaceHopping,
     FewestSwitchesSurfaceHoppingAbInitio,
 )
+from qclab.algorithms.multi_state_mapping_approach_to_surface_hopping import (
+    MultiStateMappingApproachToSurfaceHopping,
+)

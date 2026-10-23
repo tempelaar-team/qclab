@@ -17,7 +17,11 @@ from qclab.models import (
     TullyProblemTwo,
     TullyProblemThree,
 )
-from qclab.algorithms import MeanField, FewestSwitchesSurfaceHopping
+from qclab.algorithms import (
+    MeanField,
+    FewestSwitchesSurfaceHopping,
+    MultiStateMappingApproachToSurfaceHopping,
+)
 from qclab.dynamics import serial_driver, parallel_driver_multiprocessing
 
 try:
@@ -40,7 +44,17 @@ def test_output_serial():
         TullyProblemTwo,
         TullyProblemThree,
     ]:
-        for algorithm_class in [MeanField, FewestSwitchesSurfaceHopping]:
+        for algorithm_class in [
+            MeanField,
+            FewestSwitchesSurfaceHopping,
+            MultiStateMappingApproachToSurfaceHopping,
+        ]:
+            if (
+                algorithm_class is MultiStateMappingApproachToSurfaceHopping
+                and model_class is HolsteinLatticeReciprocalSpace
+            ):
+                # The default MSMASH sampling assumes a site (real-space) diabatic basis.
+                continue
             print(f"Testing {model_class.__name__} with {algorithm_class.__name__}")
 
             sim = Simulation(model_sim_settings[model_class.__name__])
@@ -82,7 +96,17 @@ def test_output_multiprocessing():
         TullyProblemTwo,
         TullyProblemThree,
     ]:
-        for algorithm_class in [MeanField, FewestSwitchesSurfaceHopping]:
+        for algorithm_class in [
+            MeanField,
+            FewestSwitchesSurfaceHopping,
+            MultiStateMappingApproachToSurfaceHopping,
+        ]:
+            if (
+                algorithm_class is MultiStateMappingApproachToSurfaceHopping
+                and model_class is HolsteinLatticeReciprocalSpace
+            ):
+                # The default MSMASH sampling assumes a site (real-space) diabatic basis.
+                continue
             print(f"Testing {model_class.__name__} with {algorithm_class.__name__}")
 
             sim = Simulation(model_sim_settings[model_class.__name__])

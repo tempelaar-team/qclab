@@ -4,6 +4,7 @@ during propagation.
 """
 
 import logging
+from functools import partial
 import numpy as np
 import copy
 from qclab import functions, Simulation
@@ -2756,4 +2757,718 @@ def update_ab_initio_property(
         for key in new_results_dict.keys():
             state["aip_" + key] = new_results_dict[key]
 
+    return state, parameters
+
+
+# Multi-state mapping approach to surface hopping (MSMASH).
+
+
+def _shadow_sim_msmash(sim: Simulation, n: int):
+    """
+    Return a shallow copy of ``sim`` whose batch_size is ``n``, so shared batched Tasks can
+    be driven over a subset (e.g. the crossing trajectories) inside the hop loop without
+    disturbing the outer simulation.
+    """
+    shadow_sim = copy.copy(sim)
+    shadow_sim.settings = copy.copy(sim.settings)
+    shadow_sim.settings.batch_size = n
+    return shadow_sim
+
+
+def _calc_resc_dir_qp_msmash(
+    sim: Simulation,
+    wf_adb: np.ndarray,
+    eigvals: np.ndarray,
+    eigvecs: np.ndarray,
+    n: int,
+    m: int,
+    dh,
+):
+    """
+    Momentum-rescaling direction in q/p (real phase-space) coordinates: the Runeson weighted
+    sum of pair derivative coupling vectors (per-pair from the shared ``calc_resc_dir_z_fssh``),
+
+    .. math::
+        \\delta^\\xi = \\sum_\\alpha \\mathrm{Re}(d^\\xi_{a\\alpha}\\,c_\\alpha^{*} c_a)
+              - \\sum_\\alpha \\mathrm{Re}(d^\\xi_{\\beta\\alpha}\\,c_\\alpha^{*} c_\\beta),
+
+    where :math:`d^\\xi_{a\\alpha}` is the pair derivative coupling and :math:`c` the adiabatic
+    amplitudes. Each per-pair derivative coupling is composed directly from the shared calc_resc_dir_z_fssh +
+    dzdzc_to_dqdp; used for the frustrated-hop momentum reversal.
+
+    Johan Runeson is acknowledged for helping correct this function.
+    """
+    constants = sim.model.constants
+    mass = constants.classical_coordinate_mass
+    weight = constants.classical_coordinate_weight
+    num_states = constants.num_quantum_states
+
+    # Runeson weighted sum of per-pair derivative coupling vectors (from the shared calc_resc_dir_z_fssh).
+    # The coupling is kept COMPLEX through dzdzc_to_dqdp (dz=dzc=d, not conj(d)); the real part is
+    # then taken of the full derivative-coupling-times-amplitude product, per Eq. (E2) of
+    # Runeson & Manolopoulos (2023). Gauge-invariant for a complex-valued Hamiltonian; reduces
+    # to the real-valued form when the Hamiltonian is real.
+    direction = np.zeros(constants.num_classical_coordinates)
+    for k in range(num_states):
+        if k != n:
+            resc_dir_pair = functions.calc_resc_dir_z_fssh(
+                sim, eigvals[n] - eigvals[k], eigvecs[:, k], eigvecs[:, n], dh
+            )
+            dq, _dp = functions.dzdzc_to_dqdp(
+                resc_dir_pair, resc_dir_pair, mass, weight
+            )
+            direction += np.real(dq * np.conj(wf_adb[k]) * wf_adb[n])
+        if k != m:
+            resc_dir_pair = functions.calc_resc_dir_z_fssh(
+                sim, eigvals[m] - eigvals[k], eigvecs[:, k], eigvecs[:, m], dh
+            )
+            dq, _dp = functions.dzdzc_to_dqdp(
+                resc_dir_pair, resc_dir_pair, mass, weight
+            )
+            direction -= np.real(dq * np.conj(wf_adb[k]) * wf_adb[m])
+    return direction
+
+
+def _pair_resc_dir_z_msmash(
+    sim, parameters, z, eigval_diff, eigvec_init, eigvec_final, dh, init_ind, final_ind
+):
+    """
+    Per-pair z-space rescaling (derivative coupling) direction between two adiabatic states. Uses a model-
+    supplied gauge-fixed direction when the model provides the shared ``rescaling_direction_fssh``
+    Ingredient (called per pair, the same hook FSSH uses) -- required for topological / complex-H
+    problems where the rescaling direction must be gauge-fixed -- otherwise the computed
+    derivative coupling via the shared calc_resc_dir_z_fssh.
+    """
+    rescaling_direction, has_rescaling_direction = sim.model.get(
+        "rescaling_direction_fssh"
+    )
+    if has_rescaling_direction:
+        return rescaling_direction(
+            sim.model,
+            parameters,
+            z=z,
+            init_state_ind=init_ind,
+            final_state_ind=final_ind,
+        )
+    return functions.calc_resc_dir_z_fssh(
+        sim, eigval_diff, eigvec_init, eigvec_final, dh
+    )
+
+
+def _calc_resc_dir_z_msmash(
+    sim: Simulation,
+    wf_adb: np.ndarray,
+    eigvals: np.ndarray,
+    eigvecs: np.ndarray,
+    n: int,
+    m: int,
+    dh,
+    z: np.ndarray,
+    parameters: dict,
+):
+    """
+    Rescaling direction in z (zc) space: the Runeson weighted sum of per-pair rescaling (derivative coupling)
+    vectors kept in z (zc) space. Each per-pair direction comes from pair_resc_dir_z, which
+    prefers a model-supplied gauge-fixed direction (``rescaling_direction_fssh`` Ingredient) and
+    otherwise computes it via calc_resc_dir_z_fssh -- so the assembled direction is gauge-
+    fixed for topological / complex-H models. This is the ``resc_dir_z`` the FSSH hop path
+    (hop_harmonic / numerical_fssh_hop) consumes for the accepted-hop energy solve.
+
+    The weighted sum takes the real part of the full derivative-coupling-times-amplitude product,
+    :math:`\\sum_\\alpha \\mathrm{Re}(d^\\xi_{a\\alpha} c_\\alpha^{*} c_a) - \\sum_\\alpha \\mathrm{Re}(d^\\xi_{\\beta\\alpha} c_\\alpha^{*} c_\\beta)`,
+    per Eq. (E2) of Runeson & Manolopoulos (2023) -- gauge-invariant for a complex-valued
+    Hamiltonian.
+
+    Johan Runeson is acknowledged for helping correct this function.
+    """
+    num_states = sim.model.constants.num_quantum_states
+    direction = np.zeros(sim.model.constants.num_classical_coordinates, dtype=complex)
+    for k in range(num_states):
+        if k != n:
+            resc_dir_pair = _pair_resc_dir_z_msmash(
+                sim,
+                parameters,
+                z,
+                eigvals[n] - eigvals[k],
+                eigvecs[:, k],
+                eigvecs[:, n],
+                dh,
+                k,
+                n,
+            )
+            direction += np.real(resc_dir_pair * np.conj(wf_adb[k]) * wf_adb[n])
+        if k != m:
+            resc_dir_pair = _pair_resc_dir_z_msmash(
+                sim,
+                parameters,
+                z,
+                eigvals[m] - eigvals[k],
+                eigvecs[:, k],
+                eigvecs[:, m],
+                dh,
+                k,
+                m,
+            )
+            direction -= np.real(resc_dir_pair * np.conj(wf_adb[k]) * wf_adb[m])
+    return direction
+
+
+def _diagonalize_h_q_tot_msmash(sim: Simulation, z: np.ndarray):
+    """
+    Adiabatic energies/vectors at z, via the shared update_h_q_tot + diagonalize_matrix
+    run on a mini-state via a shadow sim scoped to the data size (a read-only copy with
+    batch_size = len(z)), so it works on any sub-batch without touching the real
+    sim.settings. The diagonalization is delegated to the shared Tasks.
+    """
+    sim = _shadow_sim_msmash(sim, len(z))
+    sub_state = {"z": z}
+    sub_state, _ = update_h_q_tot(sim, sub_state, {})
+    sub_state, _ = partial(
+        diagonalize_matrix,
+        matrix_name="h_q_tot",
+        eigvals_name="eigvals",
+        eigvecs_name="eigvecs",
+    )(sim, sub_state, {})
+    return sub_state["eigvals"], sub_state["eigvecs"]
+
+
+def _active_surface_force_msmash(
+    sim: Simulation, z: np.ndarray, eigvecs: np.ndarray, active: np.ndarray
+):
+    """
+    Active-surface force at z: the quantum-classical gradient projected on the active adiabatic
+    surface, via the shared update_act_surf_wf + update_quantum_classical_force run on a mini-
+    state (a shadow sim scoped to len(z), so it works on any sub-batch). The gradient comes
+    through update_dh_qc_dzc, which falls back to finite differences when the analytic
+    dh_qc_dzc is absent. Returns the complex (zc) force.
+    """
+    sim = _shadow_sim_msmash(sim, len(z))
+    sub_state = {"z": z, "eigvecs": eigvecs, "act_surf_ind": active}
+    sub_state, _ = update_act_surf_wf(sim, sub_state, {})
+    sub_state, _ = partial(update_quantum_classical_force, wf_db_name="act_surf_wf")(
+        sim, sub_state, {}
+    )
+    return sub_state["quantum_classical_force"]
+
+
+def _gauge_fix_eigvecs_msmash(
+    sim: Simulation, eigvals, eigvecs, eigvecs_previous, z, gauge_fixing
+):
+    """
+    Gauge-fix eigvecs relative to eigvecs_previous, via the shared update_eigvecs_gauge run on
+    a mini-state (a shadow sim scoped to len(z)). Inert on real-symmetric H (couplings already
+    real, signs already overlap-consistent); it does the work only off the real axis, where it
+    makes the derivative couplings real so the nonadiabatic rescaling direction is well defined.
+    """
+    if gauge_fixing is None:
+        return eigvecs
+    sim = _shadow_sim_msmash(sim, len(z))
+    sub_state = {
+        "z": z,
+        "eigvals": eigvals,
+        "eigvecs": eigvecs,
+        "eigvecs_previous": eigvecs_previous,
+    }
+    sub_state, _ = partial(
+        update_eigvecs_gauge,
+        gauge_fixing=gauge_fixing,
+        output_eigvecs_name="eigvecs",
+    )(sim, sub_state, {})
+    return sub_state["eigvecs"]
+
+
+def _classical_force_msmash(sim: Simulation, z: np.ndarray):
+    """
+    Classical (bath) force dh_c/dzc at z, via the shared update_classical_force run on a mini-
+    state (a shadow sim scoped to len(z)). The bath gradient falls back to finite differences
+    when the analytic dh_c_dzc ingredient is absent, honoring the three-Hamiltonian floor (as
+    active_surface_force does). Returns the complex (zc) force.
+    """
+    sim = _shadow_sim_msmash(sim, len(z))
+    sub_state = {"z": z}
+    sub_state, _ = update_classical_force(sim, sub_state, {})
+    return sub_state["classical_force"]
+
+
+def _rk4_step_msmash(
+    sim: Simulation,
+    z: np.ndarray,
+    wf_db: np.ndarray,
+    eigvals: np.ndarray,
+    eigvecs: np.ndarray,
+    quantum_classical_force: np.ndarray,
+    active: np.ndarray,
+    dt: np.ndarray,
+):
+    """
+    One RK4 step of the classical coordinate z and the electronic wavefunction over a per-
+    trajectory dt, at the array level. The classical coordinate follows
+    dz/dt = -i (dh_c/dzc + dh_qc/dzc) integrated by RK4, with the force re-evaluated on the
+    (fixed) active surface at each stage; the electronic wf_db is advanced by the exact
+    propagator over dt. z-native throughout (no q/p split), so representation-covariant to
+    integrator order. Returns (z, wf_db, eigvals, eigvecs, quantum_classical_force). Used where
+    a Recipe of Tasks cannot take per-trajectory sub-steps (the hop-loop bisection).
+    """
+    d = dt[:, None]
+
+    def active_force_at(zz):
+        return _classical_force_msmash(sim, zz) + _active_surface_force_msmash(
+            sim, zz, eigvecs, active
+        )
+
+    k1 = -1j * (_classical_force_msmash(sim, z) + quantum_classical_force)
+    k2 = -1j * active_force_at(z + k1 * d / 2.0)
+    k3 = -1j * active_force_at(z + k2 * d / 2.0)
+    k4 = -1j * active_force_at(z + k3 * d)
+    z_new = z + (d / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    # Electronic exact propagator over dt in the start-of-step adiabatic basis (FSSH scheme).
+    wf_db_new = functions.propagate_wf_db_adiabatic(wf_db, eigvals, eigvecs, dt)
+    # Re-diagonalize, gauge-fix, and recompute the active-surface force at the new z.
+    eigvals_new, eigvecs_new = _diagonalize_h_q_tot_msmash(sim, z_new)
+    gauge_fixing = getattr(sim.algorithm.settings, "gauge_fixing", None)
+    eigvecs_new = _gauge_fix_eigvecs_msmash(
+        sim, eigvals_new, eigvecs_new, eigvecs, z_new, gauge_fixing
+    )
+    quantum_classical_force = _active_surface_force_msmash(
+        sim, z_new, eigvecs_new, active
+    )
+    return z_new, wf_db_new, eigvals_new, eigvecs_new, quantum_classical_force
+
+
+def _resolve_crossing_msmash(
+    sim: Simulation,
+    z: np.ndarray,
+    wf_adb: np.ndarray,
+    n: int,
+    m: int,
+    eigvals: np.ndarray,
+    eigvecs: np.ndarray,
+):
+    """
+    Accept/frustrate momentum rescaling on a hop (MASH hop policy), z-native (single
+    trajectory). Returns (z_new, accepted).
+
+    Accepted-hop rescale: the energy-conservation solve goes through the shared FSSH hop path
+    -- the model's ``hop`` Ingredient if it supplies one (e.g. ``hop_harmonic``, closed form),
+    otherwise the shared grid solve ``numerical_fssh_hop`` -- applied as a z-native shift along
+    the z-space direction, so it is representation-general by construction. A frustrated
+    hop triggers the directional momentum reversal, gated by
+    the ``reverse_frustrated_hops`` setting.
+    """
+    constants = sim.model.constants
+    mass = constants.classical_coordinate_mass
+    weight = constants.classical_coordinate_weight
+    z_momentum_scale = np.sqrt(0.5 / (mass * weight))
+    reverse_frustrated = sim.algorithm.settings.get("reverse_frustrated_hops", True)
+    energy_gap = eigvals[m] - eigvals[n]
+    dh_state, _ = update_dh_qc_dzc(sim, {"z": z[None]}, {})
+    resc_dir_z = _calc_resc_dir_z_msmash(
+        sim, wf_adb, eigvals, eigvecs, n, m, dh_state["dh_qc_dzc"], z, {}
+    )
+
+    # Accepted-hop energy-conserving rescale, z-native via the shared FSSH hop path: the
+    # model's `hop` Ingredient if it supplies one (e.g. hop_harmonic, closed form), otherwise
+    # the shared grid solve numerical_fssh_hop. Both take the z-space direction and return
+    # (z_shift, hopped). This keeps the accepted rescale representation-general (a z-native
+    # shift along resc_dir_z), with precision on a given model deferred to its Ingredient.
+    hop, has_hop = sim.model.get("hop")
+    hop_fn = hop if has_hop else functions.numerical_fssh_hop
+    z_shift, accepted = hop_fn(
+        sim.model, {}, z=z, resc_dir_z=resc_dir_z, eigval_diff=energy_gap
+    )
+    if accepted:
+        return z + z_shift, True
+
+    # Frustrated hop: directional momentum reversal along the rescaling direction.
+    if not reverse_frustrated:
+        return z, False
+    momentum = functions.z_to_p(z, mass, weight)
+    direction = _calc_resc_dir_qp_msmash(
+        sim, wf_adb, eigvals, eigvecs, n, m, dh_state["dh_qc_dzc"]
+    ) / np.sqrt(mass)
+    mass_weighted_momentum = momentum / np.sqrt(mass)
+    if constants.num_classical_coordinates == 1:
+        momentum_along = mass_weighted_momentum
+    else:
+        momentum_along = (
+            np.dot(mass_weighted_momentum, direction)
+            / np.dot(direction, direction)
+            * direction
+        )
+    momentum_orthogonal = mass_weighted_momentum - momentum_along
+    # Reverse only this component; the caller recombines it with the orthogonal part.
+    momentum_along = -momentum_along
+    momentum_new = (momentum_orthogonal + momentum_along) * np.sqrt(mass)
+    return z.real + 1j * z_momentum_scale * momentum_new, False
+
+
+def _hop_crossing_indices_msmash(sim, wf_db, eigvecs, active_previous):
+    """
+    Indices of trajectories whose maximum-population adiabatic surface has changed from the
+    pre-step active surface -- the candidate hops the loop must resolve.
+    """
+    candidate_surface = np.argmax(
+        np.abs(functions.transform_vec(wf_db, eigvecs)) ** 2, axis=1
+    ).astype(int)
+    return np.nonzero(candidate_surface != active_previous)[0]
+
+
+def _bisect_crossing_time_msmash(
+    sim,
+    z_start,
+    wf_db_start,
+    eigvals_start,
+    eigvecs_start,
+    force_start,
+    active,
+    dt,
+    crossing,
+    idx,
+    num_bisections=10,
+):
+    """
+    Bisection driver: bracket and halve the sub-step time to locate the crossing -- the instant
+    a crossing trajectory's active-surface population is overtaken. Returns the final bracket
+    (t_lower, t_upper) and the sub-step state at the last midpoint (z, wf_db, eigvals, eigvecs,
+    adiabatic coefficients), from which the caller selects the accepted crossing time.
+    """
+    t_lower = np.zeros(len(active))
+    t_upper = dt.copy()
+    z_bisect = wf_db_bisect = eigvals_bisect = eigvecs_bisect = wf_adb_bisect = None
+    for _ in range(num_bisections):
+        t_mid = 0.5 * (t_lower + t_upper)
+        z_bisect, wf_db_bisect, eigvals_bisect, eigvecs_bisect, _ = _rk4_step_msmash(
+            sim,
+            z_start,
+            wf_db_start,
+            eigvals_start,
+            eigvecs_start,
+            force_start,
+            active,
+            t_mid,
+        )
+        wf_adb_bisect = functions.transform_vec(wf_db_bisect, eigvecs_bisect)
+        pops = np.abs(wf_adb_bisect) ** 2
+        nonactive_pops = pops.copy()
+        nonactive_pops[idx, active] = -np.inf
+        pop_gap = pops[idx, active] - np.max(nonactive_pops, axis=1)
+        t_lower = np.where(crossing & (pop_gap > 0), t_mid, t_lower)
+        t_upper = np.where(crossing & ~(pop_gap > 0), t_mid, t_upper)
+    return (
+        t_lower,
+        t_upper,
+        z_bisect,
+        wf_db_bisect,
+        eigvals_bisect,
+        eigvecs_bisect,
+        wf_adb_bisect,
+    )
+
+
+def update_resolve_hops_msmash(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    z_name: str = "z",
+    wf_db_name: str = "wf_db",
+    eigvecs_name: str = "eigvecs",
+    act_surf_ind_name: str = "act_surf_ind",
+    eigvals_name: str = "eigvals",
+    eigvecs_previous_name: str = "eigvecs_previous",
+    h_q_tot_name: str = "h_q_tot",
+    act_surf_wf_name: str = "act_surf_wf",
+    z_previous_name: str = "z_previous",
+    wf_db_previous_name: str = "wf_db_previous",
+    act_surf_ind_previous_name: str = "act_surf_ind_previous",
+):
+    """
+    Faithful hop resolution, batched over the crosser subset. Extracts the trajectories
+    whose argmax surface changed, evolves them together (lockstep max-hop / bisection with a
+    done-mask; resolve_crossing stays per-trajectory), and writes them back. Processing only
+    the crossers -- not the full batch -- keeps the cost proportional to the number of hops.
+
+    Optional Keyword Arguments
+    --------------------------
+    z_name:
+        Name of the classical coordinates in the State object.
+    wf_db_name:
+        Name of the diabatic wavefunction in the State object.
+    eigvecs_name:
+        Name of the eigenvectors in the State object.
+    act_surf_ind_name:
+        Name of the active-surface index in the State object.
+    eigvals_name:
+        Name of the eigenvalues in the State object.
+    eigvecs_previous_name:
+        Name of the gauge reference eigenvectors in the State object.
+    h_q_tot_name:
+        Name of the total quantum Hamiltonian in the State object.
+    act_surf_wf_name:
+        Name of the active-surface wavefunction in the State object.
+    z_previous_name:
+        Name of the pre-step classical coordinates in the State object.
+    wf_db_previous_name:
+        Name of the pre-step diabatic wavefunction in the State object.
+    act_surf_ind_previous_name:
+        Name of the pre-step active-surface index in the State object.
+
+    Constants and Settings
+    ----------------------
+    sim.settings.gauge_fixing:
+        Eigenvector gauge-fixing mode.
+    sim.algorithm.settings.msmash_max_hops:
+        Maximum number of hop-resolution passes per update step.
+    sim.algorithm.settings.msmash_num_bisections:
+        Number of bisection iterations used to locate each crossing time.
+    sim.settings.reverse_frustrated_hops:
+        Whether to reverse the momentum on a frustrated hop. The reversal is not
+        representation-invariant; set to False when basis invariance is required.
+    sim.model.constants.classical_coordinate_mass:
+        Mass of each classical coordinate.
+    sim.model.constants.classical_coordinate_weight:
+        Weight of each classical coordinate.
+
+    Ingredients
+    -----------
+    dh_qc_dzc:
+        Gradient of the quantum-classical Hamiltonian, for the rescaling direction.
+    dh_c_dzc:
+        Gradient of the classical Hamiltonian, for the bath force.
+    hop:
+        Optional model hop ingredient for the accepted-hop energy-conservation solve.
+
+    Reads
+    -----
+    state[z_name], state[wf_db_name], state[eigvecs_name], state[act_surf_ind_name];
+    state[z_previous_name], state[wf_db_previous_name], state[act_surf_ind_previous_name] --
+    pre-step snapshots (the candidate surface is computed inline).
+
+    Writes
+    ------
+    state[z_name], state[wf_db_name], state[act_surf_ind_name] -- crossers overwritten.
+    state[h_q_tot_name], state[eigvals_name], state[eigvecs_name] -- crossers recomputed at
+    the post-hop z (gauge-fixed against state[eigvecs_previous_name]);
+    state[act_surf_wf_name] -- rebuilt for the post-hop active surface.
+
+    Notes
+    -----
+    B = sim.settings.batch_size; N = sim.model.constants.num_quantum_states.
+    """
+    active_previous = state[act_surf_ind_previous_name].astype(int)
+    crossing_ind = _hop_crossing_indices_msmash(
+        sim, state[wf_db_name], state[eigvecs_name], active_previous
+    )
+    if len(crossing_ind) == 0:
+        return state, parameters
+    num_crossing = len(crossing_ind)
+    idx = np.arange(num_crossing)
+    max_hops = sim.algorithm.settings.get("msmash_max_hops", 10)
+    num_bisections = sim.algorithm.settings.get("msmash_num_bisections", 10)
+
+    z = state[z_previous_name][crossing_ind].copy()
+    wf_db = state[wf_db_previous_name][crossing_ind].copy()
+    active = active_previous[crossing_ind].copy()
+    dt = np.full(num_crossing, sim.settings.dt_update)
+    done = np.zeros(num_crossing, dtype=bool)
+
+    for hop_attempt in range(1, max_hops + 1):
+        if done.all():
+            break
+        z_start = z.copy()
+        wf_db_start = wf_db.copy()
+        eigvals_start, eigvecs_start = _diagonalize_h_q_tot_msmash(sim, z_start)
+        force_start = _active_surface_force_msmash(sim, z_start, eigvecs_start, active)
+        z_full, wf_db_full, eigvals, eigvecs, force = _rk4_step_msmash(
+            sim,
+            z_start,
+            wf_db_start,
+            eigvals_start,
+            eigvecs_start,
+            force_start,
+            active,
+            dt,
+        )
+        wf_adb = functions.transform_vec(wf_db_full, eigvecs)
+        dominant_state = np.argmax(np.abs(wf_adb) ** 2, axis=1).astype(int)
+        settled = (~done) & (dominant_state == active)
+        crossing = (~done) & (dominant_state != active)
+        z = np.where(settled[:, None], z_full, z)
+        wf_db = np.where(settled[:, None], wf_db_full, wf_db)
+        done = done | settled
+
+        (
+            t_lower,
+            t_upper,
+            z_bisect,
+            wf_db_bisect,
+            eigvals_bisect,
+            eigvecs_bisect,
+            wf_adb_bisect,
+        ) = _bisect_crossing_time_msmash(
+            sim,
+            z_start,
+            wf_db_start,
+            eigvals_start,
+            eigvecs_start,
+            force_start,
+            active,
+            dt,
+            crossing,
+            idx,
+            num_bisections=num_bisections,
+        )
+        hop_dest = functions.runner_up_surface(wf_adb_bisect, active)
+
+        t_cross = dt.copy()
+        for j in np.nonzero(crossing)[0]:
+            _, accepted = _resolve_crossing_msmash(
+                sim,
+                z_bisect[j],
+                wf_adb_bisect[j],
+                int(active[j]),
+                int(hop_dest[j]),
+                eigvals_bisect[j],
+                eigvecs_bisect[j],
+            )
+            t_cross[j] = t_upper[j] if accepted else t_lower[j]
+
+        z_cross, wf_db_cross, eigvals_cross, eigvecs_cross, _ = _rk4_step_msmash(
+            sim,
+            z_start,
+            wf_db_start,
+            eigvals_start,
+            eigvecs_start,
+            force_start,
+            active,
+            t_cross,
+        )
+        wf_adb_cross = functions.transform_vec(wf_db_cross, eigvecs_cross)
+        z = np.where(crossing[:, None], z_cross, z)
+        wf_db = np.where(crossing[:, None], wf_db_cross, wf_db)
+        for j in np.nonzero(crossing)[0]:
+            z_new, accepted = _resolve_crossing_msmash(
+                sim,
+                z[j],
+                wf_adb_cross[j],
+                int(active[j]),
+                int(hop_dest[j]),
+                eigvals_cross[j],
+                eigvecs_cross[j],
+            )
+            z[j] = z_new
+            if accepted:
+                active[j] = int(hop_dest[j])
+        dt = np.where(crossing, dt - t_cross, dt)
+
+        if hop_attempt == max_hops and crossing.any():
+            final_crossing = crossing
+            eigvals_last, eigvecs_last = _diagonalize_h_q_tot_msmash(sim, z)
+            force_last = _active_surface_force_msmash(sim, z, eigvecs_last, active)
+            z_last, wf_db_last, eigvals_last_step, eigvecs_last_step, _ = (
+                _rk4_step_msmash(
+                    sim, z, wf_db, eigvals_last, eigvecs_last, force_last, active, dt
+                )
+            )
+            wf_adb_last = functions.transform_vec(wf_db_last, eigvecs_last_step)
+            dominant_last = np.argmax(np.abs(wf_adb_last) ** 2, axis=1).astype(int)
+            z = np.where(final_crossing[:, None], z_last, z)
+            wf_db = np.where(final_crossing[:, None], wf_db_last, wf_db)
+            for j in np.nonzero(final_crossing & (dominant_last != active))[0]:
+                z_new, accepted = _resolve_crossing_msmash(
+                    sim,
+                    z[j],
+                    wf_adb_last[j],
+                    int(active[j]),
+                    int(dominant_last[j]),
+                    eigvals_last_step[j],
+                    eigvecs_last_step[j],
+                )
+                z[j] = z_new
+                if accepted:
+                    active[j] = int(dominant_last[j])
+
+    state[z_name][crossing_ind] = z
+    state[wf_db_name][crossing_ind] = wf_db
+    state[act_surf_ind_name][crossing_ind] = active
+
+    # Refresh the crossers' adiabatic quantities at their post-hop z so the State is
+    # consistent at the end of the step (the next update step relies on this instead
+    # of re-diagonalizing). Only the crosser subset is diagonalized.
+    shadow_sim = _shadow_sim_msmash(sim, len(crossing_ind))
+    sub_state = {"z": z}
+    sub_state, _ = update_h_q_tot(shadow_sim, sub_state, parameters)
+    eigvals_new, eigvecs_new = np.linalg.eigh(sub_state["h_q_tot"])
+    eigvecs_new = _gauge_fix_eigvecs_msmash(
+        sim,
+        eigvals_new,
+        eigvecs_new,
+        state[eigvecs_previous_name][crossing_ind],
+        z,
+        sim.algorithm.settings.gauge_fixing,
+    )
+    state[h_q_tot_name][crossing_ind] = sub_state["h_q_tot"]
+    state[eigvals_name][crossing_ind] = eigvals_new
+    state[eigvecs_name][crossing_ind] = eigvecs_new
+    state, parameters = update_act_surf_wf(
+        sim,
+        state,
+        parameters,
+        act_surf_wf_name=act_surf_wf_name,
+        act_surf_ind_name=act_surf_ind_name,
+        eigvecs_name=eigvecs_name,
+    )
+    return state, parameters
+
+
+def update_dm_db_msmash(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    wf_db_name: str = "wf_db",
+    dm_db_name: str = "dm_db",
+):
+    """
+    Diabatic density matrix from the MASH estimator,
+
+    .. math::
+        \\rho_{nm} = \\alpha_N\\, c_n c_m^{*} + \\delta_{nm}\\,(1 - \\alpha_N) / N,
+
+    whose diagonal is the population estimator
+
+    .. math::
+        \\Phi_n = 1/N + \\alpha_N\\,(|c_n|^2 - 1/N),
+
+    with :math:`\\alpha_N = (N - 1) / (H_N - 1)`, :math:`H_N` the N-th harmonic number, and
+    :math:`c` the diabatic wavefunction.
+
+    Optional Keyword Arguments
+    --------------------------
+    wf_db_name:
+        Name of the diabatic wavefunction in the State object.
+    dm_db_name:
+        Name of the diabatic density matrix in the State object.
+
+    Constants and Settings
+    ----------------------
+    sim.model.constants.num_quantum_states:
+        Number of quantum states N.
+
+    Reads
+    -----
+    state[wf_db_name] : (B, N) complex128 -- diabatic wavefunction.
+
+    Writes
+    ------
+    state[dm_db_name] : (B, N, N) complex128 -- diabatic density matrix.
+
+    Notes
+    -----
+    B = sim.settings.batch_size; N = sim.model.constants.num_quantum_states.
+    """
+    wf_db = state[wf_db_name]
+    num_states = sim.model.constants.num_quantum_states
+    estimator_alpha = functions.calc_alpha_n_mash(num_states)
+    dm_db = estimator_alpha * np.einsum("bn,bm->bnm", wf_db, np.conj(wf_db))
+    dm_db += np.eye(num_states)[None, :, :] * ((1.0 - estimator_alpha) / num_states)
+    state[dm_db_name] = dm_db
     return state, parameters

@@ -665,3 +665,103 @@ def initialize_dm_adb_0_fssh(
         optimize="greedy",
     )
     return state, parameters
+
+
+def initialize_wf_db_msmash(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    wf_db_name: str = "wf_db",
+    seed_name: str = "seed",
+):
+    """
+    Sample the focused (spin-mapping) diabatic wavefunction, writing the draw back to
+    state[wf_db_name].
+
+    Uses a model-supplied ``sample_wf_db_msmash`` Ingredient when the model provides one, so a
+    model whose diabatic basis is not the site (real-space) basis -- e.g. a reciprocal-space
+    representation -- can draw the same physical ensemble expressed in its own basis. Otherwise
+    the default site-basis focused sampling (functions.sample_wf_db_focused_msmash) is used. The default
+    reads the focused state from the supplied wavefunction (its largest-population component) -- an
+    initial condition, not an algorithm setting.
+
+    Optional Keyword Arguments
+    --------------------------
+    wf_db_name:
+        Name of the diabatic wavefunction in the State object.
+    seed_name:
+        Name of the per-trajectory random seeds in the State object.
+
+    Constants and Settings
+    ----------------------
+    sim.model.constants.num_quantum_states:
+        Number of quantum states N.
+
+    Reads
+    -----
+    state[wf_db_name] : (B, N) complex128 -- supplied initial diabatic state (focused index);
+    state[seed_name] : (B,) int -- per-trajectory random seeds.
+
+    Writes
+    ------
+    state[wf_db_name] : (B, N) complex128 -- sampled focused diabatic wavefunction.
+
+    Notes
+    -----
+    B = sim.settings.batch_size; N = sim.model.constants.num_quantum_states.
+    """
+    sample_wf_db_msmash, has_sample_wf_db_msmash = sim.model.get("sample_wf_db_msmash")
+    if has_sample_wf_db_msmash:
+        state[wf_db_name] = sample_wf_db_msmash(
+            sim.model,
+            parameters,
+            wf_db=np.asarray(state[wf_db_name]),
+            seeds=state[seed_name],
+        )
+    else:
+        state[wf_db_name] = functions.sample_wf_db_focused_msmash(
+            sim.model.constants.num_quantum_states,
+            np.asarray(state[wf_db_name]),
+            state[seed_name],
+        )
+    return state, parameters
+
+
+def initialize_act_surf_msmash(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    wf_db_name: str = "wf_db",
+    eigvecs_name: str = "eigvecs",
+    act_surf_ind_name: str = "act_surf_ind",
+):
+    """
+    Set the initial active surface to the argmax adiabatic population.
+
+    Optional Keyword Arguments
+    --------------------------
+    wf_db_name:
+        Name of the diabatic wavefunction in the State object.
+    eigvecs_name:
+        Name of the eigenvectors in the State object.
+    act_surf_ind_name:
+        Name of the active-surface index in the State object.
+
+    Reads
+    -----
+    state[wf_db_name] : (B, N) complex128 -- diabatic wavefunction.
+    state[eigvecs_name] : (B, N, N) complex128 -- eigenvectors of h_q_tot.
+
+    Writes
+    ------
+    state[act_surf_ind_name] : (B,) int -- active-surface index.
+
+    Notes
+    -----
+    B = sim.settings.batch_size; N = sim.model.constants.num_quantum_states.
+    """
+    state[act_surf_ind_name] = np.argmax(
+        np.abs(functions.transform_vec(state[wf_db_name], state[eigvecs_name])) ** 2,
+        axis=1,
+    ).astype(int)
+    return state, parameters

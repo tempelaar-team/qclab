@@ -892,3 +892,102 @@ def numerical_fssh_hop(model, parameters, **kwargs):
     if min_energy > thresh:
         return np.zeros_like(z), False
     return -1j * min_gamma * resc_dir_z, True
+
+
+def calc_alpha_n_mash(num_states):
+    """
+    Population-estimator scaling factor of multi-state MASH,
+
+    .. math::
+        \\alpha_N = (N - 1) / (H_N - 1),
+
+    where :math:`H_N` is the N-th harmonic number (Runeson and Manolopoulos, J. Chem. Phys.
+    159, 094115, 2023).
+
+    .. rubric:: Args
+
+    num_states : int
+        Number of quantum states N.
+
+    .. rubric:: Returns
+
+    alpha_n : float
+        Scaling factor :math:`\\alpha_N`.
+    """
+    harmonic_number = np.sum(1.0 / np.arange(1, num_states + 1))
+    return (num_states - 1) / (harmonic_number - 1)
+
+
+def propagate_wf_db_adiabatic(
+    wf_db: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray, dt: np.ndarray
+):
+    """
+    Propagate the diabatic wavefunction by dt, mirroring the native update_wf_db_propagator
+    arithmetic at the array level: build the diagonal adiabatic propagator exp(-i E dt), rotate
+    it to the diabatic basis (transform_mat), and apply it (batch_matvec). dt is a per-
+    trajectory vector; the half-step of the symmetric split is the caller's choice of dt, not a
+    property of this unit.
+    """
+    batch_size, num_quantum_states = wf_db.shape
+    prop_adb = np.zeros(
+        (batch_size, num_quantum_states, num_quantum_states), dtype=complex
+    )
+    idx = np.arange(num_quantum_states)
+    prop_adb[:, idx, idx] = np.exp(-1j * eigvals * dt[:, None])
+    prop_db = transform_mat(prop_adb, eigvecs, adb_to_db=True)
+    return batch_matvec(prop_db, wf_db)
+
+
+def runner_up_surface(wf_adb, active):
+    """
+    Per-trajectory hop destination: the second-most-populated adiabatic surface, i.e. the
+    argmax adiabatic population excluding the current active surface.
+    """
+    idx = np.arange(len(active))
+    nonactive_pops = (np.abs(wf_adb) ** 2).copy()
+    nonactive_pops[idx, active] = -np.inf
+    return np.argmax(nonactive_pops, axis=1).astype(int)
+
+
+def sample_wf_db_focused_msmash(num_states, wf_db, seeds):
+    """
+    Default focused (spin-mapping) sampling of the diabatic wavefunction, in the site
+    (real-space) diabatic basis. The populated state is the largest-population component of the
+    supplied wavefunction; its squared magnitudes are set so the MASH population estimator gives
+    :math:`\\Phi_{\\mathrm{init}}(0) = 1`,
+
+    .. math::
+        |c_{\\mathrm{init}}|^2 = 1/N + (N - 1) / (\\alpha_N N), \\qquad
+        |c_{k}|^2 = (\\alpha_N - 1) / (\\alpha_N N)\\ \\ (k \\neq \\mathrm{init}),
+
+    with :math:`\\alpha_N = (N - 1) / (H_N - 1)`; each state then gets a random global phase drawn
+    from the per-trajectory seed. A reciprocal- or otherwise-transformed-basis model overrides this
+    by providing the ``sample_wf_db_msmash`` Ingredient (see initialize_wf_db_msmash).
+
+    Args
+    ----
+    num_states : int -- number of quantum states N.
+    wf_db : (B, N) complex128 -- supplied diabatic state; its first-trajectory argmax sets the
+        focused index.
+    seeds : (B,) int -- per-trajectory random seeds.
+
+    Returns
+    -------
+    (B, N) complex128 -- sampled focused diabatic wavefunction.
+    """
+    wf_db = np.asarray(wf_db).reshape(-1, num_states)
+    batch_size = wf_db.shape[0]
+    init = int(np.argmax(np.abs(wf_db[0]) ** 2))
+    estimator_alpha = calc_alpha_n_mash(num_states)
+    sq_magnitudes = np.full(
+        num_states, (estimator_alpha - 1) / (estimator_alpha * num_states)
+    )
+    sq_magnitudes[init] = 1.0 / num_states + (num_states - 1) / (
+        estimator_alpha * num_states
+    )
+    sampled_wf_db = np.empty((batch_size, num_states), dtype=complex)
+    for b in range(batch_size):
+        rng = np.random.default_rng(int(seeds[b]))
+        phase = rng.uniform(0.0, 2.0 * np.pi, num_states)
+        sampled_wf_db[b] = (np.cos(phase) + 1j * np.sin(phase)) * np.sqrt(sq_magnitudes)
+    return sampled_wf_db
