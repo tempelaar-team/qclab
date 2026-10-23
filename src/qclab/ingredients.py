@@ -21,7 +21,7 @@ def h_c_harmonic(model, parameters, **kwargs):
     .. rubric:: Keyword Args
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
 
     .. rubric:: Model Constants
 
@@ -53,7 +53,7 @@ def h_c_free(model, parameters, **kwargs):
     .. rubric:: Keyword Args
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
 
     .. rubric:: Model Constants
 
@@ -82,7 +82,7 @@ def dh_c_dzc_harmonic(model, parameters, **kwargs):
     .. rubric:: Keyword Args
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
 
     .. rubric:: Model Constants
 
@@ -110,7 +110,7 @@ def dh_c_dzc_free(model, parameters, **kwargs):
     .. rubric:: Keyword Args
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
 
     .. rubric:: Model Constants
 
@@ -222,7 +222,7 @@ def h_qc_diagonal_linear(model, parameters, **kwargs):
     .. rubric:: Keyword Args
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
 
     .. rubric:: Model Constants
 
@@ -250,7 +250,7 @@ def dh_qc_dzc_diagonal_linear(model, parameters, **kwargs):
     .. rubric:: Keyword Args
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
 
     .. rubric:: Model Constants
 
@@ -453,7 +453,7 @@ def init_classical_boltzmann_harmonic(model, parameters, **kwargs):
     .. rubric:: Returns
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
     """
     seed = kwargs["seed"]
     kBT = model.constants.kBT
@@ -500,7 +500,7 @@ def init_classical_wigner_harmonic(model, parameters, **kwargs):
     .. rubric:: Returns
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
     """
     seed = kwargs["seed"]
     w = model.constants.harmonic_frequency
@@ -550,7 +550,7 @@ def init_classical_definite_position_momentum(model, parameters, **kwargs):
     .. rubric:: Returns
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
     """
     seed = kwargs["seed"]
     q = model.constants.init_position
@@ -591,7 +591,7 @@ def init_classical_wigner_coherent_state(model, parameters, **kwargs):
     .. rubric:: Returns
 
     z : ndarray
-        complex classical coordinates.
+        complex-valued classical coordinates.
     """
     seed = kwargs["seed"]
     a = model.constants.coherent_state_displacement

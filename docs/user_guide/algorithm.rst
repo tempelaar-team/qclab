@@ -167,6 +167,53 @@ As an additional example of a complete algorithm we include the source code for 
       :linenos:
       :pyobject: FewestSwitchesSurfaceHopping
 
+.. _msmash_source:
+
+Multi-State Mapping Approach to Surface Hopping Example
+-------------------------------------------------------
+
+The multi-state mapping approach to surface hopping (MSMASH) of Runeson and Manolopoulos (J. Chem. Phys. **159**, 094115, 2023) is defined in the ``qclab.algorithms.MultiStateMappingApproachToSurfaceHopping`` module.
+The diabatic wavefunction is sampled from the focused spin-mapping ensemble, the classical coordinates are propagated on the adiabatic surface with the largest population, and hops occur deterministically when that surface changes.
+Each crossing is located by bisection and resolved by an energy-conserving momentum rescaling, or by a momentum reversal if the hop is frustrated.
+
+.. list-table:: MSMASH settings
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Setting
+     - Description
+   * - ``gauge_fixing``
+     - Eigenvector gauge-fixing mode (default ``"sign_overlap"``).
+   * - ``use_gauge_field_force``
+     - Whether to add the gauge-field force (default ``False``).
+   * - ``reverse_frustrated_hops``
+     - Whether to reverse the momentum along the rescaling direction on a frustrated hop (default ``True``). The reversal is not representation-invariant.
+   * - ``msmash_max_hops``
+     - Maximum number of hop-resolution passes per update step (default ``10``).
+   * - ``msmash_num_bisections``
+     - Number of bisection iterations used to locate each crossing time (default ``10``).
+
+.. list-table:: MSMASH collected observables
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Key
+     - Description
+   * - ``dm_db``
+     - The diabatic density matrix from the MASH population and coherence estimators.
+   * - ``t``
+     - The time points of the simulation.
+
+The default initial sampling assumes that the diabatic basis is the site (real-space) basis. Models whose diabatic basis differs should provide the ``sample_wf_db_msmash`` Ingredient (see :ref:`Ingredients <ingredient>`).
+
+.. dropdown:: View full source
+   :icon: code
+
+   .. literalinclude:: ../../src/qclab/algorithms/multi_state_mapping_approach_to_surface_hopping.py
+      :language: python
+      :linenos:
+      :pyobject: MultiStateMappingApproachToSurfaceHopping
+
 .. _ab_initio_fssh_source:
 
 Ab Initio Surface Hopping Example
