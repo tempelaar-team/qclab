@@ -202,6 +202,27 @@ def update_z_rk4_k4_sum(
     return z_0
 
 
+@njit(inline="always")
+def _reuse_shared_scales(value, m, h):
+    """Reuse broadcast scale factors only when enough trajectories share them."""
+    array = np.asarray(value)
+    mass = np.asarray(m)
+    weight = np.asarray(h)
+    # Padding also supports scalars and one-dimensional arrays in compiled calls.
+    array_shape = (1, 1) + array.shape
+    mass_shape = (1, 1) + mass.shape
+    weight_shape = (1, 1) + weight.shape
+    return (
+        array.ndim == 2
+        and array_shape[-2] >= 4
+        and array.size >= 256
+        and mass.ndim <= 2
+        and mass_shape[-2] == 1
+        and weight.ndim <= 2
+        and weight_shape[-2] == 1
+    )
+
+
 @njit
 def dqdp_to_dzc(dq, dp, m, h):
     """
@@ -227,10 +248,20 @@ def dqdp_to_dzc(dq, dp, m, h):
     dp_present = dp is not None
     dq_present = dq is not None
     if dq_present and dp_present:
+        if _reuse_shared_scales(dq, m, h):
+            scale_q = np.sqrt(0.5 / (m * h))
+            scale_p = np.sqrt(m * h / 2)
+            return scale_q * dq + 1j * scale_p * dp
         return np.sqrt(0.5 / (m * h)) * dq + 1j * np.sqrt(m * h / 2) * dp
     if dp_present:
+        if _reuse_shared_scales(dp, m, h):
+            scale_p = np.sqrt(m * h / 2)
+            return 1j * scale_p * dp
         return 1j * np.sqrt(m * h / 2) * dp
     if dq_present:
+        if _reuse_shared_scales(dq, m, h):
+            scale_q = np.sqrt(0.5 / (m * h))
+            return scale_q * dq.astype(np.complex128)
         return np.sqrt(0.5 / (m * h)) * dq.astype(np.complex128)
     raise ValueError("At least one of dq or dp must be provided.")
 
@@ -263,14 +294,26 @@ def dzdzc_to_dqdp(dz, dzc, m, h):
     dz_present = dz is not None
     dzc_present = dzc is not None
     if dz_present and dzc_present:
+        if _reuse_shared_scales(dz, m, h):
+            scale_q = np.sqrt(0.5 * m * h)
+            scale_p = np.sqrt(0.5 / (m * h))
+            return scale_q * (dz + dzc), 1j * scale_p * (dz - dzc)
         dq = np.sqrt(0.5 * m * h) * (dz + dzc)
         dp = 1j * np.sqrt(0.5 / (m * h)) * (dz - dzc)
         return dq, dp
     if dz_present:
+        if _reuse_shared_scales(dz, m, h):
+            scale_q = np.sqrt(0.5 * m * h)
+            scale_p = np.sqrt(0.5 / (m * h))
+            return scale_q * (dz + np.conj(dz)), 1j * scale_p * (dz - np.conj(dz))
         dq = np.sqrt(0.5 * m * h) * (dz + np.conj(dz))
         dp = 1j * np.sqrt(0.5 / (m * h)) * (dz - np.conj(dz))
         return dq, dp
     if dzc_present:
+        if _reuse_shared_scales(dzc, m, h):
+            scale_q = np.sqrt(0.5 * m * h)
+            scale_p = np.sqrt(0.5 / (m * h))
+            return scale_q * (np.conj(dzc) + dzc), 1j * scale_p * (np.conj(dzc) - dzc)
         dq = np.sqrt(0.5 * m * h) * (np.conj(dzc) + dzc)
         dp = 1j * np.sqrt(0.5 / (m * h)) * (np.conj(dzc) - dzc)
         return dq, dp
@@ -298,6 +341,9 @@ def z_to_q(z, m, h):
     q : ndarray
         Position coordinates.
     """
+    if _reuse_shared_scales(z, m, h):
+        scale = np.sqrt(2.0 / (m * h))
+        return scale * z.real
     return np.sqrt(2.0 / (m * h)) * z.real
 
 
@@ -322,6 +368,9 @@ def z_to_p(z, m, h):
     p : ndarray
         Momentum coordinates.
     """
+    if _reuse_shared_scales(z, m, h):
+        scale = np.sqrt(2.0 * m * h)
+        return scale * z.imag
     return np.sqrt(2.0 * m * h) * z.imag
 
 
@@ -352,10 +401,20 @@ def qp_to_z(q, p, m, h):
     q_present = q is not None
     p_present = p is not None
     if q_present and p_present:
+        if _reuse_shared_scales(q, m, h):
+            scale_q = np.sqrt(0.5 * m * h)
+            scale_p = np.sqrt(0.5 / (m * h))
+            return scale_q * q + 1j * scale_p * p
         return np.sqrt(0.5 * m * h) * q + 1j * np.sqrt(0.5 / (m * h)) * p
     if q_present and not p_present:
+        if _reuse_shared_scales(q, m, h):
+            scale_q = np.sqrt(0.5 * m * h)
+            return scale_q * q.astype(np.complex128)
         return np.sqrt(0.5 * m * h) * q.astype(np.complex128)
     if not q_present and p_present:
+        if _reuse_shared_scales(p, m, h):
+            scale_p = np.sqrt(0.5 / (m * h))
+            return 1j * scale_p * p
         return 1j * np.sqrt(0.5 / (m * h)) * p
     raise ValueError("At least one of q or p must be provided.")
 
@@ -486,7 +545,25 @@ def h_qc_diagonal_linear_jit(z, gamma):
     num_classical_coordinates = z.shape[1]
     num_sites = gamma.shape[0]
     h_qc = np.zeros((batch_size, num_sites, num_sites), dtype=np.complex128)
-    for b in range(batch_size):
+    blocked_size = batch_size // 4 * 4
+    # Independent sums reuse each coupling without changing summation order.
+    for b in range(0, blocked_size, 4):
+        for i in range(num_sites):
+            acc_0 = 0.0
+            acc_1 = 0.0
+            acc_2 = 0.0
+            acc_3 = 0.0
+            for j in range(num_classical_coordinates):
+                coupling = gamma[i, j] * 2.0
+                acc_0 += coupling * z[b, j].real
+                acc_1 += coupling * z[b + 1, j].real
+                acc_2 += coupling * z[b + 2, j].real
+                acc_3 += coupling * z[b + 3, j].real
+            h_qc[b, i, i] = acc_0
+            h_qc[b + 1, i, i] = acc_1
+            h_qc[b + 2, i, i] = acc_2
+            h_qc[b + 3, i, i] = acc_3
+    for b in range(blocked_size, batch_size):
         for i in range(num_sites):
             acc = 0.0
             for j in range(num_classical_coordinates):
@@ -554,6 +631,77 @@ def gen_sample_gaussian(constants, z_initial=None, seed=None, separable=True):
 
 
 @njit
+def _array_memory_bounds(array):
+    """Return conservative byte bounds, including negative and zero strides."""
+    low = np.int64(array.ctypes.data)
+    high = low
+    for dimension in range(array.ndim):
+        offset = (array.shape[dimension] - 1) * array.strides[dimension]
+        if offset < 0:
+            low += offset
+        else:
+            high += offset
+    return low, high + array.itemsize
+
+
+@njit
+def _arrays_overlap(first, second):
+    """Conservatively identify overlapping input/output views."""
+    first_low, first_high = _array_memory_bounds(first)
+    second_low, second_high = _array_memory_bounds(second)
+    return first_low < second_high and second_low < first_high
+
+
+@njit
+def _calc_sparse_inner_product_direct(inds, mels, shape, vec_l_conj, vec_r, out=None):
+    """Retain eager writes for sparse contributions and aliased output arrays."""
+    batch_size, num_classical_coordinates, num_quantum_states = shape[:3]
+    if out is None:
+        out = np.zeros(batch_size * num_classical_coordinates, dtype=np.complex128)
+    out.fill(0.0j)
+    left = vec_l_conj.reshape(batch_size * num_quantum_states)
+    right = vec_r.reshape(batch_size * num_quantum_states)
+    rows, coordinates, a, b = inds
+    for i in range(mels.shape[0]):
+        trajectory = rows[i]
+        index = trajectory * num_classical_coordinates + coordinates[i]
+        index_left = trajectory * num_quantum_states + a[i]
+        index_right = trajectory * num_quantum_states + b[i]
+        out[index] += left[index_left] * mels[i] * right[index_right]
+    return out
+
+
+@njit
+def _calc_sparse_inner_product_grouped(inds, mels, shape, vec_l_conj, vec_r, out):
+    """Accumulate consecutive output entries without changing contribution order."""
+    batch_size, num_classical_coordinates, num_quantum_states = shape[:3]
+    out.fill(0.0j)
+    left = vec_l_conj.reshape(batch_size * num_quantum_states)
+    right = vec_r.reshape(batch_size * num_quantum_states)
+    rows, coordinates, a, b = inds
+    previous = 0
+    accumulated = 0.0j
+    have_previous = False
+    for i in range(mels.shape[0]):
+        trajectory = rows[i]
+        index = trajectory * num_classical_coordinates + coordinates[i]
+        if not have_previous or index != previous:
+            if have_previous:
+                out[previous] = accumulated
+            accumulated = out[index]
+            previous = index
+            have_previous = True
+        accumulated += (
+            left[trajectory * num_quantum_states + a[i]]
+            * mels[i]
+            * right[trajectory * num_quantum_states + b[i]]
+        )
+    if have_previous:
+        out[previous] = accumulated
+    return out
+
+
+@njit
 def calc_sparse_inner_product(inds, mels, shape, vec_l_conj, vec_r, out=None):
     """
     Take a sparse gradient matrix with shape ``(batch_size, num_classical_coordinates,
@@ -580,32 +728,49 @@ def calc_sparse_inner_product(inds, mels, shape, vec_l_conj, vec_r, out=None):
     out : ndarray
         Result of the inner product with shape ``(batch_size, num_classical_coordinates)``.
     """
-    batch_size, num_classical_coordinates, num_quantum_states = (
-        shape[0],
-        shape[1],
-        shape[2],
+    # Dense/grouped COO benefits from fewer output loads and stores. Keep the
+    # direct loop for sparse inputs, where grouping would add overhead.
+    probe = min(len(mels), 64)
+    repeated = 0
+    for i in range(1, probe):
+        if inds[0][i] == inds[0][i - 1] and inds[1][i] == inds[1][i - 1]:
+            repeated += 1
+    if probe >= 16 and repeated * 4 >= 3 * (probe - 1):
+        if out is None:
+            result = np.empty(shape[0] * shape[1], dtype=np.complex128)
+            return _calc_sparse_inner_product_grouped(
+                inds, mels, shape, vec_l_conj, vec_r, result
+            )
+        if out.ndim == 1:
+            if (
+                out.dtype == np.dtype(np.complex128)
+                and not _arrays_overlap(out, vec_l_conj)
+                and not _arrays_overlap(out, vec_r)
+                and not _arrays_overlap(out, mels)
+                and not _arrays_overlap(out, inds[0])
+                and not _arrays_overlap(out, inds[1])
+                and not _arrays_overlap(out, inds[2])
+                and not _arrays_overlap(out, inds[3])
+            ):
+                return _calc_sparse_inner_product_grouped(
+                    inds, mels, shape, vec_l_conj, vec_r, out
+                )
+    return _calc_sparse_inner_product_direct(
+        inds, mels, shape, vec_l_conj, vec_r, out=out
     )
-    r = inds[0]
-    c = inds[1]
-    a = inds[2]
-    b = inds[3]
 
-    if out is None:
-        out = np.zeros(batch_size * num_classical_coordinates, dtype=np.complex128)
-    if out is not None:
-        out.fill(0.0j)
 
-    l_flat = vec_l_conj.reshape(batch_size * num_quantum_states)
-    r_flat = vec_r.reshape(batch_size * num_quantum_states)
-
-    for i in range(mels.shape[0]):
-        ri = r[i]
-        idx_out = ri * num_classical_coordinates + c[i]
-        idx_l = ri * num_quantum_states + a[i]
-        idx_r = ri * num_quantum_states + b[i]
-        out[idx_out] += l_flat[idx_l] * mels[i] * r_flat[idx_r]
-
-    return out
+@njit(boundscheck=True)
+def _accumulate_derivative_couplings(
+    rows, coordinates, values_z, values_zc, batch_size, num_classical_coordinates
+):
+    """Replace ordered add.at scatters while retaining NumPy projection arithmetic."""
+    derivative_z = np.zeros((batch_size, num_classical_coordinates), dtype=np.complex128)
+    derivative_zc = np.zeros((batch_size, num_classical_coordinates), dtype=np.complex128)
+    for i in range(len(rows)):
+        derivative_zc[rows[i], coordinates[i]] += values_zc[i]
+        derivative_z[rows[i], coordinates[i]] += values_z[i]
+    return derivative_z, derivative_zc
 
 
 def analytic_der_couple_phase(sim, dh_qc_dzc, eigvals, eigvecs):
@@ -640,6 +805,7 @@ def analytic_der_couple_phase(sim, dh_qc_dzc, eigvals, eigvecs):
         w.r.t. the momentum coordinate.
     """
     inds, mels, shape = dh_qc_dzc
+    work_dtype = np.result_type(mels.dtype, eigvecs.dtype)
     batch_size = shape[0]
     m = sim.model.constants.classical_coordinate_mass
     h = sim.model.constants.classical_coordinate_weight
@@ -671,36 +837,48 @@ def analytic_der_couple_phase(sim, dh_qc_dzc, eigvals, eigvecs):
             if np.any(np.abs(eigval_diff) < numerical_constants.SMALL):
                 plus[np.where(np.abs(eigval_diff) < numerical_constants.SMALL)] = 1
                 logger.error("Degenerate eigenvalues detected.")
-        der_couple_dzc = np.zeros(
-            (
-                batch_size,
-                num_classical_coords,
-            ),
-            dtype=complex,
-        )
-        der_couple_dz = np.zeros(
-            (
-                batch_size,
-                num_classical_coords,
-            ),
-            dtype=complex,
-        )
-        np.add.at(
-            der_couple_dzc,
-            (inds[0], inds[1]),
+        # Keep these operations in NumPy: reassociating them can change gauge
+        # decisions near a cancellation, even when the difference is one ulp.
+        values_zc = (
             np.conj(evec_i)[inds[0], inds[2]]
             * mels
             * evec_j[inds[0], inds[3]]
-            / ((eigval_diff + plus)[inds[0]]),
+            / ((eigval_diff + plus)[inds[0]])
         )
-        np.add.at(
-            der_couple_dz,
-            (inds[0], inds[1]),
+        values_z = (
             np.conj(evec_i)[inds[0], inds[3]]
             * np.conj(mels)
             * evec_j[inds[0], inds[2]]
-            / ((eigval_diff + plus)[inds[0]]),
+            / ((eigval_diff + plus)[inds[0]])
         )
+        use_compiled_scatter = (
+            hasattr(_accumulate_derivative_couplings, "signatures")
+            and work_dtype in (np.dtype(np.float64), np.dtype(np.complex128))
+            and values_z.dtype in (np.dtype(np.float64), np.dtype(np.complex128))
+            and values_zc.dtype in (np.dtype(np.float64), np.dtype(np.complex128))
+            and isinstance(inds[0], np.ndarray)
+            and isinstance(inds[1], np.ndarray)
+            and inds[0].ndim == 1
+            and inds[1].ndim == 1
+            and inds[0].dtype.kind in ("i", "u")
+            and inds[1].dtype.kind in ("i", "u")
+            and values_z.ndim == 1
+            and values_zc.ndim == 1
+            and len(inds[0]) == len(inds[1]) == len(values_z) == len(values_zc)
+        )
+        if use_compiled_scatter:
+            der_couple_dz, der_couple_dzc = _accumulate_derivative_couplings(
+                inds[0], inds[1], values_z, values_zc, batch_size, num_classical_coords
+            )
+            # Let NumPy reproduce its warnings/errstate behavior on exceptional sums.
+            use_compiled_scatter = np.all(np.isfinite(der_couple_dz)) and np.all(
+                np.isfinite(der_couple_dzc)
+            )
+        if not use_compiled_scatter:
+            der_couple_dzc = np.zeros((batch_size, num_classical_coords), dtype=complex)
+            der_couple_dz = np.zeros((batch_size, num_classical_coords), dtype=complex)
+            np.add.at(der_couple_dzc, (inds[0], inds[1]), values_zc)
+            np.add.at(der_couple_dz, (inds[0], inds[1]), values_z)
         der_couple_dq, der_couple_dp = dzdzc_to_dqdp(
             der_couple_dz, der_couple_dzc, m[np.newaxis, :], h[np.newaxis, :]
         )
