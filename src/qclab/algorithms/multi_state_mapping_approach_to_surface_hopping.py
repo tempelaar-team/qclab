@@ -9,13 +9,23 @@ from qclab import tasks
 
 class MultiStateMappingApproachToSurfaceHopping(Algorithm):
     """
-    Multi-state mapping approach to surface hopping algorithm class.
+    Multi-state mapping approach to surface hopping (MSMASH) algorithm class.
 
-    Implements the multi-state MASH of Runeson and Manolopoulos (J. Chem. Phys. 159, 094115,
-    2023).
+    The frustrated-hop momentum reversal is controlled by the
+    ``reverse_frustrated_hops`` keyword argument (default ``True``). This reversal is
+    not representation-invariant; set it to ``False`` when basis invariance is required.
+
+    Reference publication:
+
+    Runeson & Manolopoulos. J. Chem. Phys. 2023, 159 (9), 094115. https://doi.org/10.1063/5.0158147.
 
     Johan Runeson is acknowledged for reviewing this implementation.
     """
+
+    # Portions of this algorithm are derived from multimash
+    # (https://github.com/jruneson/multimash, commit 4756b9e), Copyright (c) 2023
+    # Johan Runeson, used under the MIT License; see
+    # src/qclab/algorithms/licenses/multimash_LICENSE.
 
     def __init__(self, settings=None):
         if settings is None:
@@ -23,10 +33,9 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
         self.default_settings = {
             "gauge_fixing": "sign_overlap",
             "use_gauge_field_force": False,
-            # This reversal is not representation-invariant; set False for basis invariance.
+            # This reversal is not representation-invariant; set False for basis
+            # invariance.
             "reverse_frustrated_hops": True,
-            "msmash_max_hops": 10,
-            "msmash_num_bisections": 10,
         }
         super().__init__(self.default_settings, settings)
 
@@ -54,7 +63,8 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
     ]
 
     update_recipe = [
-        # Record the pre-step snapshot replayed by the hop loop for any surface that crosses.
+        # Record the snapshot at the start of the update time step, replayed by
+        # the hop loop for any surface that crosses.
         partial(tasks.copy_in_state, copy_name="z_previous", orig_name="z"),
         partial(tasks.copy_in_state, copy_name="wf_db_previous", orig_name="wf_db"),
         partial(
@@ -62,14 +72,11 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
             copy_name="act_surf_ind_previous",
             orig_name="act_surf_ind",
         ),
-        # h_q_tot, eigvals, eigvecs and act_surf_wf are consistent with z from the end of
-        # the previous step (or initialization), so no start-of-step diagonalization.
-        # (Dead start-block QC force removed: the wf_changed=True call below recomputes it at the
-        # same z before k1 consumes it.)
+        # h_q_tot, eigvals, eigvecs and act_surf_wf are consistent with z from the
+        # end of the previous update time step (or initialization), so no
+        # diagonalization at the start of this update time step.
+        # Begin RK4 step (shared QC Lab RK4 Tasks).
         tasks.update_classical_force,
-        # Begin RK4 step: classical z by RK4 under the active-surface force, electronic wf_db by
-        # the exact propagator. z-native (no q/p split), so representation-covariant to
-        # integrator order. Composes the shared qclab RK4 Tasks.
         partial(
             tasks.update_quantum_classical_force,
             wf_db_name="act_surf_wf",
@@ -107,7 +114,8 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
         ),
         tasks.update_z_rk4_k4,
         tasks.update_wf_db_propagator,
-        # Re-diagonalize and recompute the active-surface force at the new z.
+        # End RK4 step.
+        # Re-diagonalize at the new z and resolve hops.
         partial(tasks.copy_in_state, copy_name="eigvecs_previous", orig_name="eigvecs"),
         tasks.update_h_q_tot,
         partial(
@@ -118,8 +126,7 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
         ),
         partial(tasks.update_eigvecs_gauge, output_eigvecs_name="eigvecs"),
         tasks.update_act_surf_wf,
-        # End RK4 step.
-        tasks.update_resolve_hops_msmash,
+        tasks.update_act_surf_hop_msmash,
     ]
 
     collect_recipe = [

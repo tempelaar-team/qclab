@@ -175,6 +175,7 @@ Multi-State Mapping Approach to Surface Hopping Example
 The multi-state mapping approach to surface hopping (MSMASH) of Runeson and Manolopoulos (J. Chem. Phys. **159**, 094115, 2023) is defined in the ``qclab.algorithms.MultiStateMappingApproachToSurfaceHopping`` module.
 The diabatic wavefunction is sampled from the focused spin-mapping ensemble, the classical coordinates are propagated on the adiabatic surface with the largest population, and hops occur deterministically when that surface changes.
 Each crossing is located by bisection and resolved by an energy-conserving momentum rescaling, or by a momentum reversal if the hop is frustrated.
+Up to 10 crossings are resolved per update time step, and each crossing time is located with 10 bisection iterations, matching the multimash reference implementation.
 
 .. list-table:: MSMASH settings
    :header-rows: 1
@@ -188,10 +189,6 @@ Each crossing is located by bisection and resolved by an energy-conserving momen
      - Whether to add the gauge-field force (default ``False``).
    * - ``reverse_frustrated_hops``
      - Whether to reverse the momentum along the rescaling direction on a frustrated hop (default ``True``). The reversal is not representation-invariant.
-   * - ``msmash_max_hops``
-     - Maximum number of hop-resolution passes per update step (default ``10``).
-   * - ``msmash_num_bisections``
-     - Number of bisection iterations used to locate each crossing time (default ``10``).
 
 .. list-table:: MSMASH collected observables
    :header-rows: 1
@@ -204,7 +201,9 @@ Each crossing is located by bisection and resolved by an energy-conserving momen
    * - ``t``
      - The time points of the simulation.
 
-The default initial sampling assumes that the diabatic basis is the site (real-space) basis. Models whose diabatic basis differs should provide the ``sample_wf_db_msmash`` Ingredient (see :ref:`Ingredients <ingredient>`).
+The default initial sampling takes the populated state to be the largest-population component of the supplied initial diabatic wavefunction. Models whose populated initial state is not the largest-population component should provide the ``sample_wf_db_msmash`` Ingredient (see :ref:`Ingredients <ingredient>`).
+
+Portions of this implementation are derived from `multimash <https://github.com/jruneson/multimash>`_, Copyright (c) 2023 Johan Runeson, used under the MIT License; the license text is distributed with QC Lab as ``src/qclab/algorithms/licenses/multimash_LICENSE``.
 
 .. dropdown:: View full source
    :icon: code
