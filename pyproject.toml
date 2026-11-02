@@ -26,6 +26,9 @@ dependencies = [
     "numba",
 ]
 
+[tool.setuptools.package-data]
+qclab = ["algorithms/licenses/*"]
+
 [project.optional-dependencies]
 tests = [
     "pytest",
