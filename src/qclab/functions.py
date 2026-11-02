@@ -918,15 +918,65 @@ def calc_alpha_n_mash(num_states):
     return (num_states - 1) / (harmonic_number - 1)
 
 
-def propagate_wf_db_adiabatic(
+def slice_parameters(parameters: dict, inds, batch_size: int):
+    """
+    Slice the per-trajectory entries of ``parameters`` to ``inds``, passing all other
+    entries through unchanged, so a Task executed on a sub-batch of trajectories sees
+    exactly the parameters a full-batch Task would.
+
+    An entry is treated as per-trajectory when it is an ndarray whose leading axis has
+    length ``batch_size``. An entry that is not per-trajectory but whose leading axis
+    happens to have length ``batch_size`` is sliced as well.
+
+    .. rubric:: Args
+
+    parameters : dict
+        Parameters object of the full batch.
+    inds : ndarray
+        Indices of the trajectories to keep.
+    batch_size : int
+        Number of trajectories in the full batch.
+
+    .. rubric:: Returns
+
+    sliced : dict
+        Parameters object restricted to ``inds``.
+    """
+    sliced = {}
+    for key, value in parameters.items():
+        if (
+            isinstance(value, np.ndarray)
+            and value.ndim >= 1
+            and value.shape[0] == batch_size
+        ):
+            sliced[key] = value[inds]
+        else:
+            sliced[key] = value
+    return sliced
+
+
+# Multi-state mapping approach to surface hopping (MSMASH).
+#
+# Portions of the MSMASH code below are derived from multimash
+# (https://github.com/jruneson/multimash, commit 4756b9e), Copyright (c) 2023
+# Johan Runeson, used under the MIT License; see
+# src/qclab/algorithms/licenses/multimash_LICENSE.
+
+
+def propagate_wf_db_adb(
     wf_db: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray, dt: np.ndarray
 ):
     """
-    Propagate the diabatic wavefunction by dt, mirroring the native update_wf_db_propagator
-    arithmetic at the array level: build the diagonal adiabatic propagator exp(-i E dt), rotate
-    it to the diabatic basis (transform_mat), and apply it (batch_matvec). dt is a per-
-    trajectory vector; the half-step of the symmetric split is the caller's choice of dt, not a
-    property of this unit.
+    Propagate the diabatic wavefunction by dt, mirroring the native
+    update_wf_db_propagator arithmetic at the array level: build the diagonal adiabatic
+    propagator exp(-i E dt), rotate it to the diabatic basis (transform_mat), and apply
+    it (batch_matvec). dt is a per-trajectory vector; the step size is the caller's
+    choice of dt, not a property of this unit. It is a method-specific per-trajectory-dt
+    helper, not a replacement for update_wf_db_propagator.
+
+    This function can be removed if the shared RK4 and wavefunction-propagation Tasks
+    (update_z_rk4_k123, update_z_rk4_k4, update_wf_db_propagator) gain support for a
+    per-trajectory time step, so that _rk4_step can be composed from shared Tasks.
     """
     batch_size, num_quantum_states = wf_db.shape
     prop_adb = np.zeros(
@@ -938,56 +988,65 @@ def propagate_wf_db_adiabatic(
     return batch_matvec(prop_db, wf_db)
 
 
-def runner_up_surface(wf_adb, active):
+def calc_hop_dest_msmash(wf_adb, act_surf_ind):
     """
-    Per-trajectory hop destination: the second-most-populated adiabatic surface, i.e. the
-    argmax adiabatic population excluding the current active surface.
+    Per-trajectory hop destination: the second-most-populated adiabatic surface, i.e.
+    the argmax adiabatic population excluding the current active surface.
     """
-    idx = np.arange(len(active))
-    nonactive_pops = (np.abs(wf_adb) ** 2).copy()
-    nonactive_pops[idx, active] = -np.inf
-    return np.argmax(nonactive_pops, axis=1).astype(int)
+    idx = np.arange(len(act_surf_ind))
+    nonactive_populations = (np.abs(wf_adb) ** 2).copy()
+    nonactive_populations[idx, act_surf_ind] = -np.inf
+    return np.argmax(nonactive_populations, axis=1).astype(int)
 
 
 def sample_wf_db_focused_msmash(num_states, wf_db, seeds):
     """
-    Default focused (spin-mapping) sampling of the diabatic wavefunction, in the site
-    (real-space) diabatic basis. The populated state is the largest-population component of the
-    supplied wavefunction; its squared magnitudes are set so the MASH population estimator gives
+    Default focused (spin-mapping) sampling of the diabatic wavefunction. The
+    populated state is the largest-population component of the supplied wavefunction;
+    its squared magnitudes are set so the MASH population estimator gives
     :math:`\\Phi_{\\mathrm{init}}(0) = 1`,
 
     .. math::
         |c_{\\mathrm{init}}|^2 = 1/N + (N - 1) / (\\alpha_N N), \\qquad
-        |c_{k}|^2 = (\\alpha_N - 1) / (\\alpha_N N)\\ \\ (k \\neq \\mathrm{init}),
+        |c_{\\zeta}|^2 = (\\alpha_N - 1) / (\\alpha_N N)\\ \\ (\\zeta \\neq \\mathrm{init}),
 
-    with :math:`\\alpha_N = (N - 1) / (H_N - 1)`; each state then gets a random global phase drawn
-    from the per-trajectory seed. A reciprocal- or otherwise-transformed-basis model overrides this
-    by providing the ``sample_wf_db_msmash`` Ingredient (see initialize_wf_db_msmash).
+    with :math:`\\alpha_N = (N - 1) / (H_N - 1)`; each state then gets a random global
+    phase drawn from the per-trajectory seed. A Model whose populated initial state is
+    not the largest-population component of the supplied wavefunction overrides this by
+    providing the ``sample_wf_db_msmash`` Ingredient (see initialize_wf_db_msmash).
 
-    Args
-    ----
-    num_states : int -- number of quantum states N.
-    wf_db : (B, N) complex128 -- supplied diabatic state; its first-trajectory argmax sets the
-        focused index.
-    seeds : (B,) int -- per-trajectory random seeds.
+    Parameters
+    ----------
+    num_states : int
+        Number of quantum states N.
+    wf_db : ndarray of shape (B, N), dtype=complex128
+        Supplied diabatic state; its first-trajectory argmax sets the focused index.
+    seeds : ndarray of shape (B,), dtype=int
+        Per-trajectory random seeds.
 
     Returns
     -------
-    (B, N) complex128 -- sampled focused diabatic wavefunction.
+    ndarray of shape (B, N), dtype=complex128
+        Sampled focused diabatic wavefunction.
+
+    Notes
+    -----
+    * B = number of trajectories (rows of the supplied wavefunction)
+    * N = num_states (number of quantum states)
     """
     wf_db = np.asarray(wf_db).reshape(-1, num_states)
     batch_size = wf_db.shape[0]
-    init = int(np.argmax(np.abs(wf_db[0]) ** 2))
-    estimator_alpha = calc_alpha_n_mash(num_states)
-    sq_magnitudes = np.full(
-        num_states, (estimator_alpha - 1) / (estimator_alpha * num_states)
-    )
-    sq_magnitudes[init] = 1.0 / num_states + (num_states - 1) / (
-        estimator_alpha * num_states
+    init_state_ind = int(np.argmax(np.abs(wf_db[0]) ** 2))
+    alpha_n = calc_alpha_n_mash(num_states)
+    sq_magnitudes = np.full(num_states, (alpha_n - 1) / (alpha_n * num_states))
+    sq_magnitudes[init_state_ind] = 1.0 / num_states + (num_states - 1) / (
+        alpha_n * num_states
     )
     sampled_wf_db = np.empty((batch_size, num_states), dtype=complex)
-    for b in range(batch_size):
-        rng = np.random.default_rng(int(seeds[b]))
+    for traj_ind in range(batch_size):
+        rng = np.random.default_rng(int(seeds[traj_ind]))
         phase = rng.uniform(0.0, 2.0 * np.pi, num_states)
-        sampled_wf_db[b] = (np.cos(phase) + 1j * np.sin(phase)) * np.sqrt(sq_magnitudes)
+        sampled_wf_db[traj_ind] = (np.cos(phase) + 1j * np.sin(phase)) * np.sqrt(
+            sq_magnitudes
+        )
     return sampled_wf_db
