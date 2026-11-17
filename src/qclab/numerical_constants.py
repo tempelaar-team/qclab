@@ -18,6 +18,21 @@ GAUGE_FIX_THRESHOLD = 1e-3
 # Finite-difference step size used by the finite-difference gradient tasks.
 FINITE_DIFFERENCE_DELTA = 1e-6
 
+# Singular values below this threshold are treated as zero when determining the
+# physical z-conjugation matrix. The threshold is relative to the largest singular
+# value, or absolute where the singular values are at most 1.
+PHYSICAL_Z_CONJ_RANK_THRESHOLD = 1e-5
+
+# Relative spacing below which eigenvalues of the classical Hessian are degenerate.
+PHYSICAL_Z_CONJ_DEGENERACY_THRESHOLD = 1e-6
+
+# Largest error for which the physical z-conjugation matrix is accepted. The error is
+# absolute for symmetry and unitarity, and relative otherwise.
+PHYSICAL_Z_CONJ_ERROR_THRESHOLD = 1e-3
+
+# Default displacement used to probe the Hessian of the classical Hamiltonian.
+H_C_HESSIAN_FINITE_DIFFERENCE_DELTA = 1e-3
+
 # Conversion factor from electronvolts to wavenumbers (cm^-1).
 EV_TO_INVCM = 8065.610420
 
