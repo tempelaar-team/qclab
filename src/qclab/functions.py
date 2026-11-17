@@ -1050,3 +1050,321 @@ def sample_wf_db_focused_msmash(num_states, wf_db, seeds):
             sq_magnitudes
         )
     return sampled_wf_db
+
+
+def calc_dh_qc_dzc_matrices_physical_z_conj(dh_qc_dzc, num_trajs_used):
+    """
+    Arrange the gradient of the quantum–classical interaction Hamiltonian, and its
+    Hermitian conjugate in the quantum indices, as dense matrices whose rows are
+    indexed by the classical coordinates. There is one column for each (trajectory,
+    row, column) index triple of the stored entries of the gradient, and for each of
+    their transposes, so that the columns of the two matrices correspond.
+
+    Parameters
+    ----------
+    dh_qc_dzc : tuple
+        Gradient of the quantum–classical interaction Hamiltonian in sparse format,
+        ``(inds, mels, shape)``.
+    num_trajs_used : int
+        Number of trajectories, counted from the first, whose gradients are included.
+
+    Returns
+    -------
+    dh_qc_dzc_matrix : ndarray of shape (C, M), dtype=complex128
+        Gradient of the quantum–classical interaction Hamiltonian.
+    dh_qc_dzc_dagger_matrix : ndarray of shape (C, M), dtype=complex128
+        Hermitian conjugate of the gradient in the quantum indices.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    * M = number of distinct (trajectory, row, column) index triples of the stored
+      entries of the gradient, together with their transposes
+    """
+    inds, mels, shape = dh_qc_dzc
+    num_classical_coordinates, num_quantum_states = shape[1], shape[2]
+    keep = inds[0] < num_trajs_used
+    traj_ind, coord_ind = inds[0][keep], inds[1][keep]
+    row_ind, col_ind = inds[2][keep], inds[3][keep]
+    mels = mels[keep]
+    # Label each (trajectory, row, column) triple, and its transpose.
+    label = (traj_ind * num_quantum_states + row_ind) * num_quantum_states + col_ind
+    label_dagger = (
+        traj_ind * num_quantum_states + col_ind
+    ) * num_quantum_states + row_ind
+    unique_label = np.unique(np.concatenate((label, label_dagger)))
+    dh_qc_dzc_matrix = np.zeros(
+        (num_classical_coordinates, len(unique_label)), dtype=complex
+    )
+    dh_qc_dzc_dagger_matrix = np.zeros_like(dh_qc_dzc_matrix)
+    dh_qc_dzc_matrix[coord_ind, np.searchsorted(unique_label, label)] = mels
+    dh_qc_dzc_dagger_matrix[coord_ind, np.searchsorted(unique_label, label_dagger)] = (
+        np.conj(mels)
+    )
+    return dh_qc_dzc_matrix, dh_qc_dzc_dagger_matrix
+
+
+def calc_determined_directions_physical_z_conj(
+    dh_qc_dzc_matrix, dh_qc_dzc_dagger_matrix
+):
+    """
+    Find the directions of the classical coordinates on which the relation
+    :math:`G = S \\tilde{G}` determines the physical z-conjugation matrix
+    :math:`S`, where ``dh_qc_dzc_matrix`` and ``dh_qc_dzc_dagger_matrix`` hold
+    :math:`G` and :math:`\\tilde{G}`. The columns of :math:`\\tilde{G}` hold the
+    Hermitian conjugate, in the quantum indices, of the gradient in :math:`G`.
+
+    Parameters
+    ----------
+    dh_qc_dzc_matrix : ndarray of shape (C, M), dtype=complex128
+        Gradient of the quantum–classical interaction Hamiltonian, as returned by
+        ``calc_dh_qc_dzc_matrices_physical_z_conj``.
+    dh_qc_dzc_dagger_matrix : ndarray of shape (C, M), dtype=complex128
+        Hermitian conjugate of the gradient in the quantum indices, as returned by
+        ``calc_dh_qc_dzc_matrices_physical_z_conj``.
+
+    Returns
+    -------
+    determined_directions : ndarray of shape (C, R), dtype=complex128
+        Orthonormal directions on which :math:`S` is determined.
+    image : ndarray of shape (C, R), dtype=complex128
+        Images of the columns of ``determined_directions`` under :math:`S`.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    * M = number of columns of the gradient matrices, see
+      ``calc_dh_qc_dzc_matrices_physical_z_conj``
+    * R = number of directions on which :math:`S` is determined
+    """
+    left, singvals, right_dagger = np.linalg.svd(
+        dh_qc_dzc_dagger_matrix, full_matrices=False
+    )
+    num_determined = 0
+    # Singular values are compared relative to the largest one.
+    if len(singvals) > 0 and singvals[0] > 0:
+        num_determined = int(
+            np.sum(
+                singvals
+                > numerical_constants.PHYSICAL_Z_CONJ_RANK_THRESHOLD * singvals[0]
+            )
+        )
+    determined_directions = left[:, :num_determined]
+    image = (dh_qc_dzc_matrix @ right_dagger[:num_determined].conj().T) / singvals[
+        :num_determined
+    ]
+    return determined_directions, image
+
+
+def calc_h_c_hessian(classical_force_probe, delta_z):
+    """
+    Calculate the Hessian of the classical Hamiltonian,
+    :math:`W_{\\xi\\xi'} = \\frac{\\partial^{2} H_{\\mathrm{c}}}{\\partial z_{\\xi}^{*} \\partial z_{\\xi'}}`,
+    at the centre of the probe displacements, by central differences of the classical
+    gradient evaluated at the probe coordinates. For the probe coordinates written by
+    ``initialize_z_probe``, the centre is :math:`z = 0`.
+
+    Parameters
+    ----------
+    classical_force_probe : ndarray of shape (4C, C), dtype=complex128
+        Gradient of the classical Hamiltonian at the probe coordinates written by
+        ``initialize_z_probe``. The rows form four blocks of C, in which each
+        classical coordinate in turn is displaced from zero by :math:`+\\delta`,
+        :math:`-\\delta`, :math:`+i\\delta` and :math:`-i\\delta`, respectively.
+    delta_z : float
+        Displacement of the probe coordinates from zero.
+
+    Returns
+    -------
+    h_c_hessian : ndarray of shape (C, C), dtype=complex128
+        Hessian of the classical Hamiltonian.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    """
+    plus, minus, plus_imag, minus_imag = np.split(classical_force_probe, 4)
+    # Real displacements of z_xi give 2 delta (d/dz_xi + d/dz_xi^*) of the gradient and
+    # imaginary displacements give 2i delta (d/dz_xi - d/dz_xi^*); combining them
+    # leaves 4 delta d/dz_xi. Rows are indexed by xi, hence the transpose.
+    h_c_hessian = ((plus - minus) - 1j * (plus_imag - minus_imag)).T / (4.0 * delta_z)
+    # The Hessian is Hermitian; symmetrizing removes finite-difference noise.
+    return 0.5 * (h_c_hessian + h_c_hessian.conj().T)
+
+
+def calc_physical_z_conj_matrix(determined_directions, image, h_c_hessian):
+    """
+    Construct the symmetric unitary matrix :math:`S` that maps the columns of
+    ``determined_directions`` onto the columns of ``image``.
+
+    Directions of the classical coordinates outside of ``determined_directions`` are
+    resolved by requiring :math:`W S = S W^{*}`, where :math:`W` is the Hessian of the
+    classical Hamiltonian. Any remaining freedom is fixed arbitrarily. If
+    ``h_c_hessian`` is None, all directions outside of ``determined_directions`` are
+    fixed arbitrarily.
+
+    Parameters
+    ----------
+    determined_directions : ndarray of shape (C, R), dtype=complex128
+        Orthonormal directions on which :math:`S` is determined, as returned by
+        ``calc_determined_directions_physical_z_conj``.
+    image : ndarray of shape (C, R), dtype=complex128
+        Images of the columns of ``determined_directions`` under :math:`S`.
+    h_c_hessian : ndarray of shape (C, C), dtype=complex128 | None
+        Hessian of the classical Hamiltonian, as returned by ``calc_h_c_hessian``.
+
+    Returns
+    -------
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix.
+    num_arbitrary : int
+        Number of directions fixed arbitrarily.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    * R = number of directions on which :math:`S` is determined
+    """
+    num_classical_coordinates, num_determined = determined_directions.shape
+    if num_determined == num_classical_coordinates:
+        return image @ determined_directions.conj().T, 0
+    # Otherwise, work within the degenerate subspaces of the classical Hessian.
+    eigvecs = np.eye(num_classical_coordinates, dtype=complex)
+    boundaries = []
+    if h_c_hessian is not None:
+        eigvals, eigvecs = np.linalg.eigh(h_c_hessian)
+        scale = max(np.max(np.abs(eigvals)), np.finfo(float).tiny)
+        boundaries = (
+            np.flatnonzero(
+                np.diff(eigvals)
+                > numerical_constants.PHYSICAL_Z_CONJ_DEGENERACY_THRESHOLD * scale
+            )
+            + 1
+        )
+    physical_z_conj_matrix = np.zeros(
+        (num_classical_coordinates, num_classical_coordinates), dtype=complex
+    )
+    num_arbitrary = 0
+    for subspace_ind in np.split(np.arange(num_classical_coordinates), boundaries):
+        subspace = eigvecs[:, subspace_ind]
+        # The matrix transforms as V S V^T, hence the unconjugated transposes.
+        determined_directions_sub = subspace.T @ determined_directions
+        image_sub = subspace.conj().T @ image
+        left_sub, singvals_sub, right_dagger_sub = np.linalg.svd(
+            determined_directions_sub
+        )
+        # As the determined directions are orthonormal, these singular values are at
+        # most 1 and are compared to the threshold directly.
+        num_determined_sub = int(
+            np.sum(singvals_sub > numerical_constants.PHYSICAL_Z_CONJ_RANK_THRESHOLD)
+        )
+        physical_z_conj_matrix_sub = (
+            (image_sub @ right_dagger_sub[:num_determined_sub].conj().T)
+            / singvals_sub[:num_determined_sub]
+        ) @ left_sub[:, :num_determined_sub].conj().T
+        # Complete the matrix on the directions left undetermined. The unconjugated
+        # transpose keeps the completion symmetric and unitary.
+        remainder = left_sub[:, num_determined_sub:].conj()
+        physical_z_conj_matrix_sub = (
+            physical_z_conj_matrix_sub + remainder @ remainder.T
+        )
+        num_arbitrary += remainder.shape[1]
+        physical_z_conj_matrix += subspace @ physical_z_conj_matrix_sub @ subspace.T
+    return physical_z_conj_matrix, num_arbitrary
+
+
+def calc_symmetric_unitary_error(matrix):
+    """
+    Calculate the largest deviation of a matrix from being symmetric and unitary,
+    as the largest absolute matrix element of :math:`A - A^{T}` and of
+    :math:`A A^{\\dagger} - 1`.
+
+    Parameters
+    ----------
+    matrix : ndarray of shape (D, D), dtype=complex128
+        Matrix :math:`A` to be checked.
+
+    Returns
+    -------
+    error : float
+        Largest deviation.
+
+    Notes
+    -----
+    * D = dimension of the matrix
+    """
+    identity = np.eye(len(matrix))
+    return max(
+        np.max(np.abs(matrix - matrix.T)),
+        np.max(np.abs(matrix @ matrix.conj().T - identity)),
+    )
+
+
+def calc_physical_z_conj_matrix_error(
+    sim,
+    parameters,
+    z,
+    physical_z_conj_matrix,
+    dh_qc_dzc_matrix,
+    dh_qc_dzc_dagger_matrix,
+):
+    """
+    Calculate the largest violation of the defining properties of the physical
+    z-conjugation matrix: its symmetry and unitarity, the gradient relation
+    :math:`G = S \\tilde{G}` (see ``calc_determined_directions_physical_z_conj``),
+    and the invariance of the classical and quantum–classical interaction
+    Hamiltonians under :math:`z \\rightarrow S z^{*}`. Symmetry and unitarity are
+    measured in absolute terms, since the elements of a unitary matrix are at most 1
+    in magnitude; the other properties are measured relative to the largest gradient
+    or Hamiltonian matrix element.
+
+    Parameters
+    ----------
+    sim : Simulation
+        Simulation object, whose Model supplies the ``h_c`` and ``h_qc`` Ingredients.
+    parameters : dict
+        Parameters object.
+    z : ndarray of shape (B, C), dtype=complex128
+        Complex-valued classical coordinates at which the Hamiltonians are evaluated.
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix to be validated.
+    dh_qc_dzc_matrix : ndarray of shape (C, M), dtype=complex128
+        Gradient of the quantum–classical interaction Hamiltonian, as returned by
+        ``calc_dh_qc_dzc_matrices_physical_z_conj``.
+    dh_qc_dzc_dagger_matrix : ndarray of shape (C, M), dtype=complex128
+        Hermitian conjugate of the gradient in the quantum indices, as returned by
+        ``calc_dh_qc_dzc_matrices_physical_z_conj``.
+
+    Returns
+    -------
+    error : float
+        Largest violation.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * C = number of classical coordinates
+    * M = number of columns of the gradient matrices, see
+      ``calc_dh_qc_dzc_matrices_physical_z_conj``
+    """
+    errors = [calc_symmetric_unitary_error(physical_z_conj_matrix)]
+    if dh_qc_dzc_matrix.size > 0 and np.max(np.abs(dh_qc_dzc_matrix)) > 0:
+        errors.append(
+            np.max(
+                np.abs(
+                    dh_qc_dzc_matrix - physical_z_conj_matrix @ dh_qc_dzc_dagger_matrix
+                )
+            )
+            / np.max(np.abs(dh_qc_dzc_matrix))
+        )
+    # Apply z -> S z^*; the transpose arises because each row of z is one trajectory.
+    physical_z_conj = np.conj(z) @ physical_z_conj_matrix.T
+    for ingredient_name in ("h_c", "h_qc"):
+        ingredient, _ = sim.model.get(ingredient_name)
+        value = ingredient(sim.model, parameters, z=z)
+        value_physical_z_conj = ingredient(sim.model, parameters, z=physical_z_conj)
+        if np.max(np.abs(value)) > 0:
+            errors.append(
+                np.max(np.abs(value_physical_z_conj - value)) / np.max(np.abs(value))
+            )
+    return max(errors)
