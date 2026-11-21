@@ -2780,7 +2780,7 @@ def _shadow_sim(sim: Simulation, n_traj: int):
     return scoped
 
 
-def _calc_resc_dir_q_msmash(
+def _calc_reversal_dir_z_msmash(
     sim: Simulation,
     wf_adb: np.ndarray,
     eigvals: np.ndarray,
@@ -2788,21 +2788,25 @@ def _calc_resc_dir_q_msmash(
     act_surf_ind: int,
     hop_dest: int,
     dh_qc_dzc,
+    physical_z_conj_matrix: np.ndarray,
 ):
     """
-    Momentum-rescaling direction, q component: Runeson's weighted sum of pair derivative
-    coupling vectors (per-pair from the shared ``calc_resc_dir_z_fssh``),
+    Direction of the frustrated-hop reversal of the physical momentum: Runeson's
+    weighted sum of pair derivative coupling vectors (per-pair from the shared
+    ``calc_resc_dir_z_fssh``),
 
     .. math::
-        \\delta^\\xi = \\sum_\\alpha \\mathrm{Re}(d^\\xi_{a\\alpha}\\,c_\\alpha^{*} c_a)
-              - \\sum_\\alpha \\mathrm{Re}(d^\\xi_{\\beta\\alpha}\\,c_\\alpha^{*} c_\\beta),
+        \\delta = \\mathcal{P}\\Big(
+              \\sum_\\alpha d_{a\\alpha}\\,c_\\alpha^{*} c_a
+              - \\sum_\\alpha d_{\\beta\\alpha}\\,c_\\alpha^{*} c_\\beta\\Big),
 
-    where :math:`d^\\xi_{a\\alpha}` is the pair derivative coupling and :math:`c` the
+    where :math:`d_{a\\alpha}` is the pair derivative-coupling vector and :math:`c` the
     adiabatic amplitudes; :math:`a` is the active surface, :math:`\\beta` the hop
-    destination, :math:`\\alpha` runs over adiabatic states, and :math:`\\delta^\\xi` is
-    the q-form direction. Each per-pair derivative coupling is composed directly from
-    the shared calc_resc_dir_z_fssh + dzdzc_to_dqdp; used for the frustrated-hop
-    momentum reversal.
+    destination, :math:`\\alpha` runs over adiabatic states, and :math:`d` is the
+    z* (zc) form. :math:`\\mathcal{P}` takes the physical position component with the
+    physical z-conjugation matrix; in a physical basis, :math:`\\delta` is the real
+    part of Eq. (E2) of Runeson and Manolopoulos (2023) written in terms of z*
+    derivative couplings, and gives the same change of the physical momentum.
 
     Unlike _calc_resc_dir_z_msmash, this frustrated-reversal direction is assembled
     directly from calc_resc_dir_z_fssh and does not consult a Model's
@@ -2810,41 +2814,36 @@ def _calc_resc_dir_q_msmash(
 
     Johan Runeson is acknowledged for helping correct this function.
     """
-    constants = sim.model.constants
-    m = constants.classical_coordinate_mass
-    h = constants.classical_coordinate_weight
-    num_quantum_states = constants.num_quantum_states
-
-    # Runeson's weighted sum of per-pair derivative coupling vectors (from the shared
-    # calc_resc_dir_z_fssh). The coupling is kept COMPLEX through dzdzc_to_dqdp
-    # (dz=dzc=d, not conj(d)); the real part is then taken of the full
-    # derivative-coupling-times-amplitude product, per Eq. (E2) of Runeson &
-    # Manolopoulos (2023). Gauge-invariant for a complex-valued Hamiltonian.
-    resc_dir_q = np.zeros(constants.num_classical_coordinates)
+    num_quantum_states = sim.model.constants.num_quantum_states
+    reversal_dir_z = np.zeros(
+        sim.model.constants.num_classical_coordinates, dtype=complex
+    )
     for state_ind in range(num_quantum_states):
         if state_ind != act_surf_ind:
-            resc_dir_pair = functions.calc_resc_dir_z_fssh(
+            reversal_dir_pair = functions.calc_resc_dir_z_fssh(
                 sim,
                 eigvals[act_surf_ind] - eigvals[state_ind],
                 eigvecs[:, state_ind],
                 eigvecs[:, act_surf_ind],
                 dh_qc_dzc,
             )
-            dq, _dp = functions.dzdzc_to_dqdp(resc_dir_pair, resc_dir_pair, m, h)
-            resc_dir_q += np.real(
-                dq * np.conj(wf_adb[state_ind]) * wf_adb[act_surf_ind]
+            reversal_dir_z += (
+                reversal_dir_pair * np.conj(wf_adb[state_ind]) * wf_adb[act_surf_ind]
             )
         if state_ind != hop_dest:
-            resc_dir_pair = functions.calc_resc_dir_z_fssh(
+            reversal_dir_pair = functions.calc_resc_dir_z_fssh(
                 sim,
                 eigvals[hop_dest] - eigvals[state_ind],
                 eigvecs[:, state_ind],
                 eigvecs[:, hop_dest],
                 dh_qc_dzc,
             )
-            dq, _dp = functions.dzdzc_to_dqdp(resc_dir_pair, resc_dir_pair, m, h)
-            resc_dir_q -= np.real(dq * np.conj(wf_adb[state_ind]) * wf_adb[hop_dest])
-    return resc_dir_q
+            reversal_dir_z -= (
+                reversal_dir_pair * np.conj(wf_adb[state_ind]) * wf_adb[hop_dest]
+            )
+    return functions.calc_z_physical_position_component(
+        reversal_dir_z, physical_z_conj_matrix
+    )
 
 
 def _pair_resc_dir_z(
@@ -2892,6 +2891,7 @@ def _calc_resc_dir_z_msmash(
     dh_qc_dzc,
     z: np.ndarray,
     parameters: dict,
+    physical_z_conj_matrix: np.ndarray,
 ):
     """
     Rescaling direction in z (zc) space: Runeson's weighted sum of per-pair rescaling
@@ -2902,15 +2902,15 @@ def _calc_resc_dir_z_msmash(
     complex h_q_tot Models. This is the ``resc_dir_z`` the FSSH hop path (hop_harmonic /
     numerical_fssh_hop) consumes for the accepted-hop energy solve.
 
-    The weighted sum takes the real part of the full derivative-coupling-times-amplitude
-    product, :math:`\\sum_\\alpha \\mathrm{Re}(d^\\xi_{a\\alpha} c_\\alpha^{*} c_a) -
-    \\sum_\\alpha \\mathrm{Re}(d^\\xi_{\\beta\\alpha} c_\\alpha^{*} c_\\beta)`, per Eq.
-    (E2) of Runeson & Manolopoulos (2023); gauge-invariant for a complex-valued
-    Hamiltonian. The real projection is taken on the coupling-amplitude product (not on
-    z) and is verified to be representation-invariant (independent of the
-    adiabatic-basis gauge). Here :math:`a` is the active surface, :math:`\\beta` the hop
-    destination, :math:`\\alpha` runs over adiabatic states, and :math:`d^\\xi` is the
-    z* (zc) form.
+    The weighted sum takes the physical position component of the full
+    derivative-coupling-times-amplitude product,
+    :math:`\\mathcal{P}(\\sum_\\alpha d_{a\\alpha} c_\\alpha^{*} c_a -
+    \\sum_\\alpha d_{\\beta\\alpha} c_\\alpha^{*} c_\\beta)`, with the physical
+    z-conjugation matrix; in a physical basis this is the real part of Eq. (E2) of
+    Runeson and Manolopoulos (2023) written in terms of z* derivative couplings, and
+    gives the same change of the physical momentum. Here :math:`a` is the active
+    surface, :math:`\\beta` the hop destination, :math:`\\alpha` runs over adiabatic
+    states, and :math:`d` is the z* (zc) form.
 
     Johan Runeson is acknowledged for helping correct this function.
     """
@@ -2929,7 +2929,7 @@ def _calc_resc_dir_z_msmash(
                 state_ind,
                 act_surf_ind,
             )
-            resc_dir_z += np.real(
+            resc_dir_z += (
                 resc_dir_pair * np.conj(wf_adb[state_ind]) * wf_adb[act_surf_ind]
             )
         if state_ind != hop_dest:
@@ -2944,10 +2944,10 @@ def _calc_resc_dir_z_msmash(
                 state_ind,
                 hop_dest,
             )
-            resc_dir_z -= np.real(
-                resc_dir_pair * np.conj(wf_adb[state_ind]) * wf_adb[hop_dest]
-            )
-    return resc_dir_z
+            resc_dir_z -= resc_dir_pair * np.conj(wf_adb[state_ind]) * wf_adb[hop_dest]
+    return functions.calc_z_physical_position_component(
+        resc_dir_z, physical_z_conj_matrix
+    )
 
 
 def _diagonalize_h_q_tot(sim: Simulation, z: np.ndarray, parameters: dict):
@@ -3104,20 +3104,20 @@ def _resolve_crossing(
     eigvals: np.ndarray,
     eigvecs: np.ndarray,
     parameters: dict,
+    physical_z_conj_matrix: np.ndarray,
 ):
     """
-    Accept/frustrate momentum rescaling on a hop (MASH hop policy), single trajectory.
+    Accept/frustrate the rescaling of the physical momentum on a hop (MASH hop
+    policy), single trajectory.
     Returns (z_new, accepted).
 
     Accepted-hop rescale: the energy-conservation solve goes through the shared FSSH hop
     path (the Model's ``hop`` Ingredient if it supplies one, e.g., ``hop_harmonic``,
     closed form; otherwise the shared grid solve ``numerical_fssh_hop``), applied as a
     shift along the z-space direction. A frustrated hop triggers the directional
-    momentum reversal, gated by the ``reverse_frustrated_hops`` setting.
+    reversal of the physical momentum, gated by the ``reverse_frustrated_hops``
+    setting. Both use the physical z-conjugation matrix.
     """
-    constants = sim.model.constants
-    m = constants.classical_coordinate_mass
-    h = constants.classical_coordinate_weight
     reverse_frustrated = sim.algorithm.settings.get("reverse_frustrated_hops", True)
     eigval_diff = eigvals[hop_dest] - eigvals[act_surf_ind]
     dh_state, _ = update_dh_qc_dzc(sim, {"z": z[None]}, parameters)
@@ -3131,6 +3131,7 @@ def _resolve_crossing(
         dh_state["dh_qc_dzc"],
         z,
         parameters,
+        physical_z_conj_matrix,
     )
 
     # Accepted-hop energy-conserving rescale via the shared FSSH hop path (the Model's
@@ -3147,25 +3148,24 @@ def _resolve_crossing(
     if accepted:
         return z + z_shift, True
 
-    # Frustrated hop: directional momentum reversal along the rescaling direction.
+    # Frustrated hop: directional reversal of the physical momentum along the reversal
+    # direction, conserving the kinetic energy.
     if not reverse_frustrated:
         return z, False
-    p = functions.z_to_p(z, m, h)
-    resc_dir_q = _calc_resc_dir_q_msmash(
-        sim, wf_adb, eigvals, eigvecs, act_surf_ind, hop_dest, dh_state["dh_qc_dzc"]
-    ) / np.sqrt(m)
-    p_mw = p / np.sqrt(m)
-    # With a single classical coordinate the rescaling direction spans the whole space,
-    # so the full momentum lies along it and no projection is needed.
-    if constants.num_classical_coordinates == 1:
-        p_along = p_mw
-    else:
-        p_along = np.dot(p_mw, resc_dir_q) / np.dot(resc_dir_q, resc_dir_q) * resc_dir_q
-    p_orth = p_mw - p_along
-    p_along = -p_along
-    p_new = (p_orth + p_along) * np.sqrt(m)
+    reversal_dir_z = _calc_reversal_dir_z_msmash(
+        sim,
+        wf_adb,
+        eigvals,
+        eigvecs,
+        act_surf_ind,
+        hop_dest,
+        dh_state["dh_qc_dzc"],
+        physical_z_conj_matrix,
+    )
     return (
-        functions.qp_to_z(functions.z_to_q(z, m, h), p_new, m, h),
+        functions.calc_z_physical_momentum_reversal(
+            sim.model, parameters, z, reversal_dir_z, physical_z_conj_matrix
+        ),
         False,
     )
 
@@ -3243,6 +3243,7 @@ def update_act_surf_hop_msmash(
     act_surf_ind_previous_name: str = "act_surf_ind_previous",
     act_surf_wf_name: str = "act_surf_wf",
     h_q_tot_name: str = "h_q_tot",
+    physical_z_conj_matrix_name: str = "physical_z_conj_matrix",
 ):
     """
     Resolve accepted/frustrated hops for the crossing trajectories and write the
@@ -3275,6 +3276,8 @@ def update_act_surf_hop_msmash(
         Name of the active-surface wavefunction in the State object.
     h_q_tot_name:
         Name of the total quantum Hamiltonian in the State object.
+    physical_z_conj_matrix_name:
+        Name of the physical z-conjugation matrix in the State object.
 
     Constants and Settings
     ----------------------
@@ -3283,12 +3286,8 @@ def update_act_surf_hop_msmash(
     sim.algorithm.settings.gauge_fixing:
         Eigenvector gauge-fixing mode.
     sim.algorithm.settings.reverse_frustrated_hops:
-        Whether to reverse the momentum on a frustrated hop. The reversal is not
-        representation-invariant; set to False when basis invariance is required.
-    sim.model.constants.classical_coordinate_mass:
-        Mass of each classical coordinate.
-    sim.model.constants.classical_coordinate_weight:
-        Weight of each classical coordinate.
+        Whether to reverse the physical momentum on a frustrated hop. The reversal
+        conserves the kinetic energy.
     sim.model.constants.num_quantum_states:
         Number of quantum states N.
     sim.model.constants.num_classical_coordinates:
@@ -3304,11 +3303,13 @@ def update_act_surf_hop_msmash(
     h_qc: required
         Quantum–classical interaction Hamiltonian, via update_h_q_tot.
     h_c: required
-        Classical Hamiltonian, via the numerical_fssh_hop energy-conservation solve.
+        Classical Hamiltonian, for the numerical_fssh_hop energy-conservation solve
+        and the kinetic energy in the frustrated-hop reversal of the physical
+        momentum.
     dh_qc_dzc: optional, default: finite-difference estimate
         Gradient of the quantum–classical interaction Hamiltonian, for the rescaling
-        direction;
-        falls back to a finite-difference estimate when the Model omits it.
+        and reversal directions; falls back to a finite-difference estimate when the
+        Model omits it.
     dh_c_dzc: optional, default: finite-difference estimate
         Gradient of the classical Hamiltonian, for the classical force; falls back to a
         finite-difference estimate when the Model omits it.
@@ -3336,6 +3337,9 @@ def update_act_surf_hop_msmash(
         Start-of-step diabatic wavefunction the rescale solves from.
     state[eigvecs_previous_name]: ndarray of shape (B, N, N), dtype=complex128
         Gauge reference for the recomputed post-hop eigenvectors.
+    state[physical_z_conj_matrix_name]: ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix, for the rescaling and reversal of the physical
+        momentum.
 
     Writes
     ------
@@ -3360,7 +3364,11 @@ def update_act_surf_hop_msmash(
     * B = sim.settings.batch_size
     * C = sim.model.constants.num_classical_coordinates
     * N = sim.model.constants.num_quantum_states
+    * The frustrated-hop reversal of the physical momentum assumes that the classical
+      Hamiltonian is the sum of a kinetic energy that is quadratic in the physical
+      momenta and a potential energy that depends on the physical positions only.
     """
+    physical_z_conj_matrix = state[physical_z_conj_matrix_name]
     act_surf_ind_previous = state[act_surf_ind_previous_name].astype(int)
     act_surf_ind_candidate = np.argmax(
         np.abs(functions.transform_vec(state[wf_db_name], state[eigvecs_name])) ** 2,
@@ -3447,6 +3455,7 @@ def update_act_surf_hop_msmash(
                 eigvals_bisect[traj_ind],
                 eigvecs_bisect[traj_ind],
                 functions.slice_parameters(sub_parameters, np.array([traj_ind]), num_crossing),
+                physical_z_conj_matrix,
             )
             t_cross[traj_ind] = t_upper[traj_ind] if accepted else t_lower[traj_ind]
 
@@ -3475,6 +3484,7 @@ def update_act_surf_hop_msmash(
                 eigvals_cross[traj_ind],
                 eigvecs_cross[traj_ind],
                 functions.slice_parameters(sub_parameters, np.array([traj_ind]), num_crossing),
+                physical_z_conj_matrix,
             )
             z[traj_ind] = z_new
             if accepted:
@@ -3520,6 +3530,7 @@ def update_act_surf_hop_msmash(
                     functions.slice_parameters(
                         sub_parameters, np.array([traj_ind]), num_crossing
                     ),
+                    physical_z_conj_matrix,
                 )
                 z[traj_ind] = z_new
                 if accepted:

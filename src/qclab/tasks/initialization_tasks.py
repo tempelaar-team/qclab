@@ -936,8 +936,8 @@ def initialize_physical_z_conj_matrix(
     * C = sim.model.constants.num_classical_coordinates
     * P = 4C, or 0 if the Hessian of the classical Hamiltonian is not needed
     * When :math:`z = U z'`, with physical positions and momenta proportional to the
-      real and imaginary parts of :math:`z'`, then :math:`S = U U^{T}`. The position
-      and momentum parts of :math:`z` are :math:`(z + S z^{*})/2` and
+      real and imaginary parts of :math:`z'`, then :math:`S = U U^{T}`. The physical
+      position and momentum components of :math:`z` are :math:`(z + S z^{*})/2` and
       :math:`(z - S z^{*})/2`.
     * The relation above holds when the quantum–classical interaction Hamiltonian
       does not depend on physical momenta. Directions of the classical coordinates
@@ -1008,7 +1008,8 @@ def initialize_physical_z_conj_matrix(
     if error > numerical_constants.PHYSICAL_Z_CONJ_ERROR_THRESHOLD:
         logger.warning(
             "The physical z-conjugation matrix could not be determined; assuming that "
-            "the real and imaginary parts of z represent positions and momenta.\n"
+            "the real and imaginary parts of z are proportional to physical "
+            "positions and momenta.\n"
             "Otherwise, provide a physical_z_conj_matrix Ingredient.\n"
             "Error: %s",
             error,

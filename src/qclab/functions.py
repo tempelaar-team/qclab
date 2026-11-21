@@ -1216,7 +1216,7 @@ def calc_physical_z_conj_matrix(determined_directions, image, h_c_hessian):
     Returns
     -------
     physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
-        Physical z-conjugation matrix.
+        Physical z-conjugation matrix :math:`S`.
     num_arbitrary : int
         Number of directions fixed arbitrarily.
 
@@ -1368,3 +1368,163 @@ def calc_physical_z_conj_matrix_error(
                 np.max(np.abs(value_physical_z_conj - value)) / np.max(np.abs(value))
             )
     return max(errors)
+
+
+def calc_z_physical_position_component(vec, physical_z_conj_matrix):
+    """
+    Calculate the physical position component of a vector in the space of the
+    complex-valued classical coordinates, :math:`(v + S v^{*})/2`, where :math:`S` is
+    the physical z-conjugation matrix.
+
+    Parameters
+    ----------
+    vec : ndarray of shape (..., C), dtype=complex128
+        Vector :math:`v`, such as the classical coordinates or a direction in their
+        space.
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix :math:`S`.
+
+    Returns
+    -------
+    physical_position_component : ndarray of shape (..., C), dtype=complex128
+        Physical position component of the vector.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    * For a Model defined in a physical basis, :math:`S` is the identity and the
+      physical position component equals the real part.
+    """
+    # Apply v -> S v^*; the transpose arises because the last index of vec is the
+    # classical index.
+    return 0.5 * (vec + np.conj(vec) @ physical_z_conj_matrix.T)
+
+
+def calc_z_physical_momentum_component(vec, physical_z_conj_matrix):
+    """
+    Calculate the physical momentum component of a vector in the space of the
+    complex-valued classical coordinates, :math:`(v - S v^{*})/2`, where :math:`S` is
+    the physical z-conjugation matrix.
+
+    Parameters
+    ----------
+    vec : ndarray of shape (..., C), dtype=complex128
+        Vector :math:`v`, such as the classical coordinates or a direction in their
+        space.
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix :math:`S`.
+
+    Returns
+    -------
+    physical_momentum_component : ndarray of shape (..., C), dtype=complex128
+        Physical momentum component of the vector.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    * For a Model defined in a physical basis, :math:`S` is the identity and the
+      physical momentum component equals :math:`i` times the imaginary part.
+    """
+    # Apply v -> S v^*; the transpose arises because the last index of vec is the
+    # classical index.
+    return 0.5 * (vec - np.conj(vec) @ physical_z_conj_matrix.T)
+
+
+def calc_z_physical_momentum_reversal(
+    model, parameters, z, reversal_dir_z, physical_z_conj_matrix
+):
+    """
+    Reverse the physical momentum along a direction, leaving the physical positions
+    and the kinetic energy unchanged.
+
+    With :math:`\\mathcal{P}z = (z + S z^{*})/2` the physical position component of
+    :math:`z` and :math:`z - \\mathcal{P}z` its physical momentum component, the
+    latter is reflected along :math:`u = i \\mathcal{P}d`, where :math:`d` is the
+    direction, in the inner product defined by the kinetic energy :math:`T`,
+
+    .. math::
+
+        z - \\mathcal{P}z \\rightarrow z - \\mathcal{P}z
+        - 2 \\frac{T(z - \\mathcal{P}z, u)}{T(u, u)} u,
+
+    where :math:`T(\\cdot, \\cdot)` is the symmetric bilinear form of the kinetic
+    energy. It is obtained by polarization,
+    :math:`T(v, w) = [T(v + w) - T(v - w)]/4`, from the kinetic energy
+    :math:`T(v) = T(v, v) = [H_{\\mathrm{c}}(\\mathcal{P}z + v) +
+    H_{\\mathrm{c}}(\\mathcal{P}z - v)]/2 - H_{\\mathrm{c}}(\\mathcal{P}z)`.
+
+    Parameters
+    ----------
+    model : Model
+        Model object, whose ``h_c`` Ingredient supplies the classical Hamiltonian.
+    parameters : dict
+        Parameters object of a single trajectory.
+    z : ndarray of shape (C,), dtype=complex128
+        Complex-valued classical coordinates of a single trajectory.
+    reversal_dir_z : ndarray of shape (C,), dtype=complex128
+        Direction along which the physical momentum is reversed. Only its physical
+        position component is used.
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix :math:`S`.
+
+    Returns
+    -------
+    z_reversed : ndarray of shape (C,), dtype=complex128
+        Complex-valued classical coordinates after the reversal.
+
+    Notes
+    -----
+    * C = number of classical coordinates
+    * The classical Hamiltonian is assumed to be the sum of a kinetic energy that is
+      quadratic in the physical momenta and a potential energy that depends on the
+      physical positions only.
+    * With a single classical coordinate, the full physical momentum is reversed.
+    """
+    z_physical_position = calc_z_physical_position_component(z, physical_z_conj_matrix)
+    # Write the physical momentum component as i times a vector with the symmetry of
+    # a physical position.
+    physical_momentum = (
+        calc_z_physical_momentum_component(z, physical_z_conj_matrix) / 1j
+    )
+    if len(z) == 1:
+        return z_physical_position - 1j * physical_momentum
+    physical_momentum_norm = np.linalg.norm(physical_momentum)
+    reversal_dir_z_physical_position = calc_z_physical_position_component(
+        reversal_dir_z, physical_z_conj_matrix
+    )
+    reversal_dir_z_norm = np.linalg.norm(reversal_dir_z_physical_position)
+    if physical_momentum_norm == 0 or reversal_dir_z_norm == 0:
+        return z.copy()
+    h_c, _ = model.get("h_c")
+
+    def calc_h_c(z_eval):
+        return np.real(h_c(model, parameters, z=z_eval[None], batch_size=1)[0])
+
+    h_c_physical_position = calc_h_c(z_physical_position)
+
+    def calc_kinetic_energy(vec):
+        # The even part in vec cancels any residual physical momentum in
+        # z_physical_position.
+        return (
+            0.5 * calc_h_c(z_physical_position + 1j * vec)
+            + 0.5 * calc_h_c(z_physical_position - 1j * vec)
+            - h_c_physical_position
+        )
+
+    # Unit vectors keep the polarization identity well conditioned.
+    unit_physical_momentum = physical_momentum / physical_momentum_norm
+    unit_reversal_dir_z = reversal_dir_z_physical_position / reversal_dir_z_norm
+    kinetic_energy_cross = 0.25 * (
+        calc_kinetic_energy(unit_physical_momentum + unit_reversal_dir_z)
+        - calc_kinetic_energy(unit_physical_momentum - unit_reversal_dir_z)
+    )
+    kinetic_energy_direction = calc_kinetic_energy(unit_reversal_dir_z)
+    physical_momentum_reversed = (
+        physical_momentum
+        - 2.0
+        * physical_momentum_norm
+        * kinetic_energy_cross
+        / kinetic_energy_direction
+        * unit_reversal_dir_z
+    )
+    return z_physical_position + 1j * physical_momentum_reversed

@@ -6,7 +6,7 @@ import logging
 from functools import partial
 import numpy as np
 import pytest
-from qclab import Simulation, Model, tasks, ingredients
+from qclab import Simulation, Model, tasks, ingredients, functions
 from qclab.models import (
     SpinBoson,
     HolsteinLattice,
@@ -107,7 +107,7 @@ def _assert_valid(physical_z_conj_matrix, z, sim):
         atol=TOLERANCE,
     )
     physical_z_conj = z.conj() @ physical_z_conj_matrix.T
-    z_position = 0.5 * (z + physical_z_conj)
+    z_physical_position = 0.5 * (z + physical_z_conj)
     h_c, _ = sim.model.get("h_c")
     h_qc, _ = sim.model.get("h_qc")
     h_c_val = h_c(sim.model, {}, z=z)
@@ -119,9 +119,10 @@ def _assert_valid(physical_z_conj_matrix, z, sim):
         h_qc_val,
         atol=TOLERANCE * np.abs(h_qc_val).max(),
     )
-    # The quantum–classical interaction Hamiltonian depends on the position part only.
+    # The quantum–classical interaction Hamiltonian depends on the physical position
+    # component only.
     assert np.allclose(
-        h_qc(sim.model, {}, z=z_position),
+        h_qc(sim.model, {}, z=z_physical_position),
         h_qc_val,
         atol=TOLERANCE * np.abs(h_qc_val).max(),
     )
@@ -315,10 +316,10 @@ def test_degenerate_frequencies_with_random_phases(monkeypatch):
     _assert_valid(physical_z_conj_matrix, z, sim)
 
 
-def test_position_and_momentum_parts():
+def test_physical_position_and_momentum_components():
     """
     The physical z-conjugation matrix reproduces the kinetic energy and an isotropic
-    momentum rescaling as evaluated in the physical basis.
+    rescaling of the physical momentum as evaluated in the physical basis.
     """
     model = SpinBoson({"A": 20})
     weight = model.constants.classical_coordinate_weight
@@ -329,15 +330,17 @@ def test_position_and_momentum_parts():
     rng = np.random.default_rng(4)
     z_physical = rng.normal(size=(3, 20)) + 1j * rng.normal(size=(3, 20))
     z = z_physical @ unitary.T
-    z_position = 0.5 * (z + z.conj() @ physical_z_conj_matrix.T)
-    z_momentum = 0.5 * (z - z.conj() @ physical_z_conj_matrix.T)
+    z_physical_position = 0.5 * (z + z.conj() @ physical_z_conj_matrix.T)
+    z_physical_momentum = 0.5 * (z - z.conj() @ physical_z_conj_matrix.T)
     h_c, _ = sim.model.get("h_c")
-    kinetic_energy = h_c(sim.model, {}, z=z) - h_c(sim.model, {}, z=z_position)
+    kinetic_energy = h_c(sim.model, {}, z=z) - h_c(sim.model, {}, z=z_physical_position)
     assert np.allclose(
         kinetic_energy, np.sum(weight * z_physical.imag**2, axis=1), rtol=TOLERANCE
     )
     z_rescaled = (z_physical.real + 0.7j * z_physical.imag) @ unitary.T
-    assert np.allclose(z_position + 0.7 * z_momentum, z_rescaled, atol=TOLERANCE)
+    assert np.allclose(
+        z_physical_position + 0.7 * z_physical_momentum, z_rescaled, atol=TOLERANCE
+    )
 
 
 def test_ingredient_overrides_numerical_determination(caplog):
@@ -463,3 +466,72 @@ def test_without_probe_recipe_entries(caplog):
         )
     assert np.array_equal(physical_z_conj_matrix, np.eye(20))
     assert "could not be determined" in caplog.text
+
+
+def test_physical_position_and_momentum_component_functions():
+    """
+    In a physical basis, the physical position and momentum components are the real
+    part and i times the imaginary part; in a rotated basis they transform with the
+    rotation.
+    """
+    rng = np.random.default_rng(11)
+    vec = rng.normal(size=(3, 5)) + 1j * rng.normal(size=(3, 5))
+    identity = np.eye(5)
+    assert np.allclose(
+        functions.calc_z_physical_position_component(vec, identity), vec.real
+    )
+    assert np.allclose(
+        functions.calc_z_physical_momentum_component(vec, identity), 1j * vec.imag
+    )
+    unitary = _random_unitary(5, seed=12)
+    physical_z_conj_matrix = unitary @ unitary.T
+    # Row vectors: z = z' @ U^T.
+    assert np.allclose(
+        functions.calc_z_physical_position_component(
+            vec @ unitary.T, physical_z_conj_matrix
+        ),
+        vec.real @ unitary.T,
+    )
+    assert np.allclose(
+        functions.calc_z_physical_momentum_component(
+            vec @ unitary.T, physical_z_conj_matrix
+        ),
+        1j * vec.imag @ unitary.T,
+    )
+
+
+def test_z_physical_momentum_reversal():
+    """
+    In a physical basis, the reversal of the physical momentum reproduces the
+    reflection of the mass-weighted momentum along the direction and conserves the
+    classical energy; in a rotated basis it transforms with the rotation.
+    """
+    model = SpinBoson({"A": 6})
+    mass = model.constants.classical_coordinate_mass
+    weight = model.constants.classical_coordinate_weight
+    rng = np.random.default_rng(13)
+    z = rng.normal(size=6) + 1j * rng.normal(size=6)
+    direction = rng.normal(size=6) + 1j * rng.normal(size=6)
+    z_reversed = functions.calc_z_physical_momentum_reversal(
+        model, {}, z, direction, np.eye(6)
+    )
+    # Reflect p / sqrt(m) along the mass-weighted q form of the direction.
+    momentum = functions.z_to_p(z, mass, weight) / np.sqrt(mass)
+    direction_q = np.sqrt(2.0 * mass * weight) * direction.real / np.sqrt(mass)
+    momentum -= (
+        2.0 * np.dot(momentum, direction_q) / np.dot(direction_q, direction_q)
+    ) * direction_q
+    expected = functions.qp_to_z(
+        functions.z_to_q(z, mass, weight), momentum * np.sqrt(mass), mass, weight
+    )
+    assert np.allclose(z_reversed, expected, rtol=0.0, atol=1e-10)
+    h_c, _ = model.get("h_c")
+    assert np.isclose(
+        h_c(model, {}, z=z_reversed[None])[0], h_c(model, {}, z=z[None])[0]
+    )
+    unitary = _random_unitary(6, seed=14)
+    rotated = _rotate_model(SpinBoson({"A": 6}), unitary)
+    z_reversed_rotated = functions.calc_z_physical_momentum_reversal(
+        rotated, {}, unitary @ z, unitary @ direction, unitary @ unitary.T
+    )
+    assert np.allclose(z_reversed_rotated, unitary @ z_reversed, rtol=0.0, atol=1e-10)
