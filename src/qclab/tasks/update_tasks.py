@@ -2919,8 +2919,8 @@ def _gauge_fix_eigvecs(
 def _calc_classical_force_sub_batch(sim: Simulation, z: np.ndarray, parameters: dict):
     """
     Classical force dh_c/dzc at z, via the shared update_classical_force executed on a
-    mini-state (a _shadow_sim sim scoped to len(z)). The classical gradient falls back to
-    finite differences when the analytic dh_c_dzc Ingredient is absent, so the Model
+    mini-state (a _shadow_sim sim scoped to len(z)). The classical gradient falls back
+    to finite differences when the analytic dh_c_dzc Ingredient is absent, so the Model
     stays usable from its Hamiltonians alone (as _calc_quantum_classical_force_act_surf
     does). Returns the complex (zc) force.
 
@@ -3047,12 +3047,22 @@ def _resolve_crossing(
     # direction, conserving the kinetic energy.
     if not reverse_frustrated:
         return z, False
-    return (
-        functions.calc_z_physical_momentum_reversal(
-            sim.model, parameters, z, resc_dir_z, physical_z_conj_matrix
-        ),
-        False,
+    physical_momentum_reversal, has_physical_momentum_reversal = sim.model.get(
+        "physical_momentum_reversal"
     )
+    if has_physical_momentum_reversal:
+        z_reversed = physical_momentum_reversal(
+            sim.model,
+            parameters,
+            z=z,
+            reversal_dir_z=resc_dir_z,
+            physical_z_conj_matrix=physical_z_conj_matrix,
+        )
+    else:
+        z_reversed = functions.calc_z_physical_momentum_reversal(
+            sim.model, parameters, z, resc_dir_z, physical_z_conj_matrix
+        )
+    return z_reversed, False
 
 
 def _bisect_crossing_time(
@@ -3201,6 +3211,10 @@ def update_act_surf_hop_msmash(
     hop: optional, default: ``functions.numerical_fssh_hop``
         Model hop Ingredient for the accepted-hop energy-conservation solve; when
         absent, the shared numerical_fssh_hop grid solve is used.
+    physical_momentum_reversal: optional, default: ``calc_z_physical_momentum_reversal``
+        Model Ingredient for the frustrated-hop reversal of the physical momentum, for
+        example ``physical_momentum_reversal_numerical``; when absent,
+        functions.calc_z_physical_momentum_reversal is used.
     gauge_field_force: optional, used only when use_gauge_field_force is True
         Gauge-field contribution to the quantum–classical force, via
         update_quantum_classical_force.
@@ -3246,9 +3260,10 @@ def update_act_surf_hop_msmash(
     * B = sim.settings.batch_size
     * C = sim.model.constants.num_classical_coordinates
     * N = sim.model.constants.num_quantum_states
-    * The frustrated-hop reversal of the physical momentum assumes that the classical
-      Hamiltonian is the sum of a kinetic energy that is quadratic in the physical
-      momenta and a potential energy that depends on the physical positions only.
+    * Without the physical_momentum_reversal Ingredient, the frustrated-hop reversal of
+      the physical momentum assumes that the classical Hamiltonian is the sum of a
+      kinetic energy that is quadratic in the physical momenta and a potential energy
+      that depends on the physical positions only.
     """
     physical_z_conj_matrix = state[physical_z_conj_matrix_name]
     act_surf_ind_previous = state[act_surf_ind_previous_name].astype(int)
@@ -3278,7 +3293,9 @@ def update_act_surf_hop_msmash(
             break
         z_start = z.copy()
         wf_db_start = wf_db.copy()
-        eigvals_start, eigvecs_start = _diagonalize_h_q_tot(sim, z_start, sub_parameters)
+        eigvals_start, eigvecs_start = _diagonalize_h_q_tot(
+            sim, z_start, sub_parameters
+        )
         quantum_classical_force_start = _calc_quantum_classical_force_act_surf(
             sim, z_start, eigvecs_start, act_surf_ind, sub_parameters
         )
@@ -3336,7 +3353,9 @@ def update_act_surf_hop_msmash(
                 int(hop_dest[traj_ind]),
                 eigvals_bisect[traj_ind],
                 eigvecs_bisect[traj_ind],
-                functions.slice_parameters(sub_parameters, np.array([traj_ind]), num_crossing),
+                functions.slice_parameters(
+                    sub_parameters, np.array([traj_ind]), num_crossing
+                ),
                 physical_z_conj_matrix,
             )
             t_cross[traj_ind] = t_upper[traj_ind] if accepted else t_lower[traj_ind]
@@ -3365,7 +3384,9 @@ def update_act_surf_hop_msmash(
                 int(hop_dest[traj_ind]),
                 eigvals_cross[traj_ind],
                 eigvecs_cross[traj_ind],
-                functions.slice_parameters(sub_parameters, np.array([traj_ind]), num_crossing),
+                functions.slice_parameters(
+                    sub_parameters, np.array([traj_ind]), num_crossing
+                ),
                 physical_z_conj_matrix,
             )
             z[traj_ind] = z_new
@@ -3471,7 +3492,8 @@ def update_dm_db_msmash(
     Diabatic density matrix from the MASH estimator,
 
     .. math::
-        \\rho_{\\zeta\\zeta'} = \\alpha_N\\, c_\\zeta c_{\\zeta'}^{*} + \\delta_{\\zeta\\zeta'}\\,(1 - \\alpha_N) / N,
+        \\rho_{\\zeta\\zeta'} = \\alpha_N\\, c_\\zeta c_{\\zeta'}^{*}
+            + \\delta_{\\zeta\\zeta'}\\,(1 - \\alpha_N) / N,
 
     whose diagonal is the population estimator
 

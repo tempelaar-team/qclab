@@ -4,7 +4,7 @@ This module tests the MultiStateMappingApproachToSurfaceHopping algorithm.
 
 import numpy as np
 import pytest
-from qclab import Simulation, functions
+from qclab import Simulation, functions, ingredients
 from qclab.tasks import update_tasks
 from qclab.models import (
     SpinBoson,
@@ -229,4 +229,41 @@ def test_msmash_independent_of_classical_basis(monkeypatch, use_hop_harmonic):
     assert num_accepted_hops[0] == num_accepted_hops[1]
     assert num_reversals[0] > 0
     assert num_reversals[0] == num_reversals[1]
+    np.testing.assert_allclose(dm_db[1], dm_db[0], rtol=0.0, atol=1e-10)
+
+
+def test_msmash_physical_momentum_reversal_ingredient():
+    """
+    MSMASH uses a Model's physical_momentum_reversal Ingredient for frustrated hops.
+    With physical_momentum_reversal_numerical, the Holstein lattice gives the same
+    diabatic density matrix as with the default reversal, to the accuracy of the
+    numerical solve.
+    """
+    num_calls = [0]
+
+    def counting_reversal(model, parameters, **kwargs):
+        num_calls[0] += 1
+        return ingredients.physical_momentum_reversal_numerical(
+            model, parameters, **kwargs
+        )
+
+    sim_settings = {
+        "num_trajs": 10,
+        "batch_size": 10,
+        "tmax": 5,
+        "dt_update": 0.01,
+        "dt_collect": 0.1,
+        "progress_bar": False,
+    }
+    dm_db = []
+    for use_ingredient in (False, True):
+        model = HolsteinLattice({"N": 4})
+        if use_ingredient:
+            model.constants.physical_momentum_reversal_numerical_threshold = 1e-12
+            model.ingredients = model.ingredients + [
+                ("physical_momentum_reversal", counting_reversal)
+            ]
+        data = serial_driver(_make_sim(model, dict(sim_settings)))
+        dm_db.append(data.data_dict["dm_db"])
+    assert num_calls[0] > 0
     np.testing.assert_allclose(dm_db[1], dm_db[0], rtol=0.0, atol=1e-10)

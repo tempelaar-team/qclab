@@ -535,3 +535,76 @@ def test_z_physical_momentum_reversal():
         rotated, {}, unitary @ z, unitary @ direction, unitary @ unitary.T
     )
     assert np.allclose(z_reversed_rotated, unitary @ z_reversed, rtol=0.0, atol=1e-10)
+
+
+def test_physical_momentum_reversal_numerical_reproduces_formula():
+    """
+    For a classical Hamiltonian that is a kinetic energy quadratic in the physical
+    momenta plus a potential energy of the physical positions, the numerical reversal
+    of the physical momentum reproduces calc_z_physical_momentum_reversal, in a
+    physical and in a rotated basis.
+    """
+    rng = np.random.default_rng(15)
+    z = rng.normal(size=6) + 1j * rng.normal(size=6)
+    direction = rng.normal(size=6) + 1j * rng.normal(size=6)
+    unitary = _random_unitary(6, seed=16)
+    for model, z_basis, direction_basis, physical_z_conj_matrix in (
+        (SpinBoson({"A": 6}), z, direction, np.eye(6)),
+        (
+            _rotate_model(SpinBoson({"A": 6}), unitary),
+            unitary @ z,
+            unitary @ direction,
+            unitary @ unitary.T,
+        ),
+    ):
+        model.constants.physical_momentum_reversal_numerical_threshold = 1e-12
+        z_numerical = ingredients.physical_momentum_reversal_numerical(
+            model,
+            {},
+            z=z_basis,
+            reversal_dir_z=direction_basis,
+            physical_z_conj_matrix=physical_z_conj_matrix,
+        )
+        z_formula = functions.calc_z_physical_momentum_reversal(
+            model, {}, z_basis, direction_basis, physical_z_conj_matrix
+        )
+        assert np.allclose(z_numerical, z_formula, rtol=0.0, atol=1e-8)
+
+
+def test_physical_momentum_reversal_numerical_quartic_kinetic_energy():
+    """
+    For a classical Hamiltonian with a term quartic in the physical momenta, the
+    numerical reversal of the physical momentum conserves the classical energy and
+    leaves the physical positions unchanged, whereas calc_z_physical_momentum_reversal
+    does not conserve the classical energy.
+    """
+    model = SpinBoson({"A": 6})
+    mass = model.constants.classical_coordinate_mass
+    weight = model.constants.classical_coordinate_weight
+
+    def h_c_quartic(model, parameters, **kwargs):
+        momentum = functions.z_to_p(kwargs["z"], mass, weight)
+        return ingredients.h_c_harmonic(model, parameters, **kwargs) + 0.1 * np.sum(
+            momentum**4, axis=-1
+        )
+
+    model.ingredients = model.ingredients + [("h_c", h_c_quartic)]
+    rng = np.random.default_rng(17)
+    z = rng.normal(size=6) + 1j * rng.normal(size=6)
+    direction = rng.normal(size=6) + 1j * rng.normal(size=6)
+    z_numerical = ingredients.physical_momentum_reversal_numerical(
+        model, {}, z=z, reversal_dir_z=direction, physical_z_conj_matrix=np.eye(6)
+    )
+    z_formula = functions.calc_z_physical_momentum_reversal(
+        model, {}, z, direction, np.eye(6)
+    )
+    energy = h_c_quartic(model, {}, z=z[None])[0]
+    assert not np.allclose(z_numerical, z)
+    assert np.allclose(
+        functions.z_to_q(z_numerical, mass, weight),
+        functions.z_to_q(z, mass, weight),
+        rtol=0.0,
+        atol=1e-10,
+    )
+    assert np.abs(h_c_quartic(model, {}, z=z_numerical[None])[0] - energy) < 1e-6
+    assert np.abs(h_c_quartic(model, {}, z=z_formula[None])[0] - energy) > 1e-3

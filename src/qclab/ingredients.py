@@ -2,6 +2,7 @@
 This module contains ingredients for use in Model classes.
 """
 
+import logging
 import numpy as np
 import copy
 from qclab import functions
@@ -10,6 +11,8 @@ from qclab.utils import DISABLE_ASE
 
 if not (DISABLE_ASE):
     from qclab.interfaces import QCLabQChemInterface
+
+logger = logging.getLogger(__name__)
 
 
 def h_c_harmonic(model, parameters, **kwargs):
@@ -428,6 +431,123 @@ def hop_free(model, parameters, **kwargs):
         return shift, True
     shift = np.zeros_like(z)
     return shift, False
+
+
+def physical_momentum_reversal_numerical(model, parameters, **kwargs):
+    """
+    Frustrated-hop reversal of the physical momentum, determined numerically from the
+    classical Hamiltonian.
+
+    The coordinate is shifted as :math:`z \\rightarrow z - i\\gamma u`, where :math:`u`
+    is the unit vector along the physical position component of the reversal direction,
+    so that only the physical momentum changes. Of the values of :math:`\\gamma` for
+    which
+
+    .. math::
+
+        H_{\\mathrm{c}}(z - i\\gamma u) = H_{\\mathrm{c}}(z),
+
+    the nonzero one closest to zero is used. It lies on the side where the classical
+    energy first decreases and is found by stepping outward on that side and refining
+    the first sign change by bisection. Unlike ``calc_z_physical_momentum_reversal``,
+    this does not assume that the classical Hamiltonian is a kinetic energy quadratic
+    in the physical momenta plus a potential energy of the physical positions only. If
+    no such value is found, a warning is logged and the coordinate is returned
+    unchanged.
+
+    .. rubric:: Keyword Args
+
+    z : ndarray
+        Current classical coordinates.
+    reversal_dir_z : ndarray
+        Direction of the reversal.
+    physical_z_conj_matrix : ndarray
+        Physical z-conjugation matrix :math:`S`.
+
+    .. rubric:: Model Constants
+
+    physical_momentum_reversal_numerical_gamma_range : float, default: 5.0
+        Initial range of gamma values to search over.
+    physical_momentum_reversal_numerical_max_iter : int, default: 20
+        Maximum number of times the range is doubled.
+    physical_momentum_reversal_numerical_num_points : int, default: 10
+        Number of grid points within the range.
+    physical_momentum_reversal_numerical_threshold : float, default: 1e-6
+        Energy threshold for convergence.
+
+    .. rubric:: Returns
+
+    z_reversed : ndarray
+        Classical coordinates after the reversal.
+    """
+    z = kwargs["z"]
+    physical_z_conj_matrix = kwargs["physical_z_conj_matrix"]
+    gamma_range = model.constants.get(
+        "physical_momentum_reversal_numerical_gamma_range", 5.0
+    )
+    max_iter = model.constants.get("physical_momentum_reversal_numerical_max_iter", 20)
+    num_points = model.constants.get(
+        "physical_momentum_reversal_numerical_num_points", 10
+    )
+    thresh = model.constants.get("physical_momentum_reversal_numerical_threshold", 1e-6)
+    unit_dir = functions.calc_z_physical_position_component(
+        kwargs["reversal_dir_z"], physical_z_conj_matrix
+    )
+    unit_dir_norm = np.linalg.norm(unit_dir)
+    if unit_dir_norm == 0:
+        return z.copy()
+    unit_dir = unit_dir / unit_dir_norm
+    h_c, _ = model.get("h_c")
+    init_energy = np.real(h_c(model, parameters, z=z[None], batch_size=1)[0])
+
+    def calc_energy_change(gamma):
+        energy = h_c(
+            model, parameters, z=(z - 1j * gamma * unit_dir)[None], batch_size=1
+        )
+        return np.real(energy[0]) - init_energy
+
+    # A small shift first identifies the side on which the classical energy decreases.
+    gamma_small = 1e-6 * gamma_range / num_points
+    if calc_energy_change(gamma_small) < 0:
+        sign = 1.0
+    elif calc_energy_change(-gamma_small) < 0:
+        sign = -1.0
+    else:
+        # No physical momentum along the direction, so there is nothing to reverse.
+        return z.copy()
+    gamma_inner = sign * gamma_small
+    bracket = None
+    for _ in range(max_iter):
+        gamma_step = gamma_range / num_points
+        for point_ind in range(1, num_points + 1):
+            gamma_outer = sign * point_ind * gamma_step
+            if np.abs(gamma_outer) <= np.abs(gamma_inner):
+                continue
+            if calc_energy_change(gamma_outer) >= 0:
+                bracket = (gamma_inner, gamma_outer)
+                break
+            gamma_inner = gamma_outer
+        if bracket is not None:
+            break
+        gamma_range = gamma_range * 2.0
+    if bracket is None:
+        logger.warning(
+            "No reversal of the physical momentum conserving the classical energy was "
+            "found; the classical coordinates are left unchanged."
+        )
+        return z.copy()
+    gamma_inner, gamma_outer = bracket
+    # 100 bisection steps reduce the bracket far below any useful resolution.
+    for _ in range(100):
+        gamma_mid = 0.5 * (gamma_inner + gamma_outer)
+        energy_change = calc_energy_change(gamma_mid)
+        if np.abs(energy_change) < thresh:
+            break
+        if energy_change < 0:
+            gamma_inner = gamma_mid
+        else:
+            gamma_outer = gamma_mid
+    return z - 1j * gamma_mid * unit_dir
 
 
 def init_classical_boltzmann_harmonic(model, parameters, **kwargs):

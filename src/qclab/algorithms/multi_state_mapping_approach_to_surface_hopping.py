@@ -13,7 +13,8 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
 
     Reference publication:
 
-    Runeson & Manolopoulos. J. Chem. Phys. 2023, 159 (9), 094115. https://doi.org/10.1063/5.0158147.
+    Runeson & Manolopoulos. J. Chem. Phys. 2023, 159 (9), 094115.
+    https://doi.org/10.1063/5.0158147.
 
     Johan Runeson is acknowledged for reviewing this implementation.
     """

@@ -72,6 +72,7 @@ The first entry evaluates the gradient of the quantum–classical interaction Ha
 
 The MSMASH Algorithm includes these entries in its initialization Recipe, for use in its rescaling and frustrated-hop reversal of the physical momentum (described in :ref:`msmash_source`).
 The frustrated-hop reversal of the physical momentum assumes that the classical Hamiltonian is the sum of a kinetic energy that is quadratic in the physical momenta and a potential energy that depends on the physical positions only.
+A Model for which this does not hold can supply the ``physical_momentum_reversal`` Ingredient, for example ``physical_momentum_reversal_numerical`` (see :ref:`Ingredients <ingredient>`).
 
 A Model can also supply :math:`S` through the ``physical_z_conj_matrix`` Ingredient (see :ref:`Ingredients <ingredient>`).
 This is needed when the quantum–classical interaction Hamiltonian depends on the physical momenta, in which case :math:`S` cannot be determined from the Hamiltonians.
