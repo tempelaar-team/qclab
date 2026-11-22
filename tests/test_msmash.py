@@ -100,8 +100,8 @@ def test_msmash_state_consistency_after_hops():
 
 def test_msmash_complex_avoided_crossing():
     """
-    Verify that MSMASH runs on a complex-valued Hamiltonian with a model-supplied
-    rescaling direction and derivative-coupling gauge fixing.
+    Verify that MSMASH runs on a complex-valued Hamiltonian with derivative-coupling
+    gauge fixing.
     """
     sim = _make_sim(
         ComplexAvoidedCrossingA(),
