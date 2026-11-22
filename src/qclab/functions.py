@@ -812,20 +812,19 @@ def numerical_fssh_hop(model, parameters, **kwargs):
     Determines the shift required to conserve energy during a hop in FSSH using
     an iterative numerical method. The coordinate following the hop is ``z + shift``.
 
-    The algorithm is as follows:
-    1. Calculate the initial energy using the Hamiltonian function at the current ``z``.
-    2. Define a grid from ``-gamma_range`` to ``+gamma_range`` with ``num_points`` points
-       uniformly spaced.
-    3. Calculate the energy at each point in the grid using the Hamiltonian function.
-    4. Find the point in the grid that minimizes the difference between the energy
-       difference and the calculated energy difference.
-    5. Recenter the grid around the minimum point found in step 4, reduce the
-       ``gamma_range`` by half, and repeat steps 3-5 until either the minimum energy
-       difference is less than the threshold or the maximum number of iterations
-       is reached.
-    6. If the minimum energy difference is less than the threshold, return the
-       corresponding shift. Otherwise, return a zero shift and indicate that the
-       hop was frustrated.
+    The shift is ``-1j * gamma * resc_dir_z``, where ``gamma`` is the root of the energy
+    mismatch closest to zero. The algorithm is as follows:
+    1. Define the energy mismatch as the change of the classical energy under the
+       shift plus ``eigval_diff``, which is zero when the shift conserves the energy.
+    2. Step outward from ``gamma = 0`` in both directions on a grid with ``num_points``
+       points per side up to ``gamma_range``, and stop at the first point where the
+       mismatch changes sign.
+    3. If no sign change is found, double ``gamma_range`` and repeat step 2, up to
+       ``max_iter`` times.
+    4. Refine the bracketing interval by bisection until the magnitude of the
+       mismatch is less than the threshold.
+    5. If no sign change is found, return a zero shift and indicate that the hop was
+       frustrated.
 
     .. rubric:: Keyword Arguments
     z : ndarray
@@ -841,9 +840,9 @@ def numerical_fssh_hop(model, parameters, **kwargs):
     numerical_fssh_hop_gamma_range : float, default: 5.0
         Initial range (negative to positive) of gamma values to search over.
     numerical_fssh_hop_max_iter : int, default: 20
-        Maximum number of iterations to perform.
+        Maximum number of times the range is doubled.
     numerical_fssh_hop_num_points : int, default: 10
-        Number of points to sample in each iteration.
+        Number of grid points on each side of zero.
     numerical_fssh_hop_threshold : float, default: 1e-6
         Energy threshold for convergence.
 
@@ -863,35 +862,45 @@ def numerical_fssh_hop(model, parameters, **kwargs):
     thresh = model.constants.get("numerical_fssh_hop_threshold", 1e-6)
     h_c, _ = model.get("h_c")
     init_energy = h_c(model, parameters, z=np.array([z]), batch_size=1)[0]
-    min_gamma = 0.0
-    num_iter = 0
-    min_energy = 1.0
-    while min_energy > thresh and num_iter < max_iter:
-        gamma_list = np.linspace(
-            min_gamma - gamma_range, min_gamma + gamma_range, num_points
-        )
-        new_energies = np.abs(
-            eigval_diff
-            - np.array(
-                [
-                    init_energy
-                    - h_c(
-                        model,
-                        parameters,
-                        z=np.array([z - 1j * gamma * resc_dir_z]),
-                        batch_size=1,
-                    )[0]
-                    for gamma in gamma_list
-                ]
-            )
-        )
-        min_gamma = gamma_list[np.argmin(new_energies)]
-        min_energy = np.min(new_energies)
-        gamma_range = gamma_range * 0.5
-        num_iter += 1
-    if min_energy > thresh:
+
+    def calc_energy_mismatch(gamma):
+        energy = h_c(
+            model, parameters, z=np.array([z - 1j * gamma * resc_dir_z]), batch_size=1
+        )[0]
+        return np.real(energy - init_energy + eigval_diff)
+
+    mismatch_zero = calc_energy_mismatch(0.0)
+    if np.abs(mismatch_zero) < thresh:
+        return np.zeros_like(z), True
+    # Step outward from zero so that the root closest to zero is bracketed first.
+    bracket = None
+    for _ in range(max_iter):
+        gamma_step = gamma_range / num_points
+        for point_ind in range(1, num_points + 1):
+            for sign in (1.0, -1.0):
+                gamma_outer = sign * point_ind * gamma_step
+                if np.sign(calc_energy_mismatch(gamma_outer)) != np.sign(mismatch_zero):
+                    bracket = (gamma_outer - sign * gamma_step, gamma_outer)
+                    break
+            if bracket is not None:
+                break
+        if bracket is not None:
+            break
+        gamma_range = gamma_range * 2.0
+    if bracket is None:
         return np.zeros_like(z), False
-    return -1j * min_gamma * resc_dir_z, True
+    gamma_inner, gamma_outer = bracket
+    # 100 bisection steps reduce the bracket far below any useful resolution.
+    for _ in range(100):
+        gamma_mid = 0.5 * (gamma_inner + gamma_outer)
+        mismatch_mid = calc_energy_mismatch(gamma_mid)
+        if np.abs(mismatch_mid) < thresh:
+            return -1j * gamma_mid * resc_dir_z, True
+        if np.sign(mismatch_mid) == np.sign(mismatch_zero):
+            gamma_inner = gamma_mid
+        else:
+            gamma_outer = gamma_mid
+    return np.zeros_like(z), False
 
 
 def calc_alpha_n_mash(num_states):

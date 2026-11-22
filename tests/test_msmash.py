@@ -3,7 +3,9 @@ This module tests the MultiStateMappingApproachToSurfaceHopping algorithm.
 """
 
 import numpy as np
+import pytest
 from qclab import Simulation, functions
+from qclab.tasks import update_tasks
 from qclab.models import (
     SpinBoson,
     ComplexAvoidedCrossingA,
@@ -181,19 +183,29 @@ def _make_reciprocal_phonon_holstein(num_sites):
     return model
 
 
-def test_msmash_independent_of_classical_basis(monkeypatch):
+@pytest.mark.parametrize("use_hop_harmonic", [True, False])
+def test_msmash_independent_of_classical_basis(monkeypatch, use_hop_harmonic):
     """
     MSMASH gives the same diabatic density matrix with the phonons of the Holstein
-    lattice in real space and in reciprocal space, including frustrated-hop reversals
-    of the physical momentum.
+    lattice in real space and in reciprocal space, including accepted hops and
+    frustrated-hop reversals of the physical momentum. The accepted hops are solved
+    either with the hop_harmonic Ingredient or with numerical_fssh_hop.
     """
+    num_accepted_hops = []
     num_reversals = []
+    resolve_crossing = update_tasks._resolve_crossing
     calc_z_physical_momentum_reversal = functions.calc_z_physical_momentum_reversal
+
+    def counting_resolve_crossing(*args, **kwargs):
+        z_new, accepted = resolve_crossing(*args, **kwargs)
+        num_accepted_hops[-1] += int(accepted)
+        return z_new, accepted
 
     def counting_reversal(*args, **kwargs):
         num_reversals[-1] += 1
         return calc_z_physical_momentum_reversal(*args, **kwargs)
 
+    monkeypatch.setattr(update_tasks, "_resolve_crossing", counting_resolve_crossing)
     monkeypatch.setattr(
         functions, "calc_z_physical_momentum_reversal", counting_reversal
     )
@@ -207,9 +219,14 @@ def test_msmash_independent_of_classical_basis(monkeypatch):
     }
     dm_db = []
     for model in (HolsteinLattice({"N": 4}), _make_reciprocal_phonon_holstein(4)):
+        if not use_hop_harmonic:
+            model.ingredients = model.ingredients + [("hop", None)]
+        num_accepted_hops.append(0)
         num_reversals.append(0)
         data = serial_driver(_make_sim(model, dict(sim_settings)))
         dm_db.append(data.data_dict["dm_db"])
+    assert num_accepted_hops[0] > 0
+    assert num_accepted_hops[0] == num_accepted_hops[1]
     assert num_reversals[0] > 0
     assert num_reversals[0] == num_reversals[1]
     np.testing.assert_allclose(dm_db[1], dm_db[0], rtol=0.0, atol=1e-10)
