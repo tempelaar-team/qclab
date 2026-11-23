@@ -537,6 +537,29 @@ def test_z_physical_momentum_reversal():
     assert np.allclose(z_reversed_rotated, unitary @ z_reversed, rtol=0.0, atol=1e-10)
 
 
+def test_calc_nearest_root():
+    """
+    calc_nearest_root finds the first root counted from zero on the given sides,
+    doubles the search range when needed, and returns None without a sign change.
+    """
+
+    def quadratic(gamma):
+        return (gamma + 1.3) * (gamma - 2.1)
+
+    def find_root(calc_value, sides):
+        return functions.calc_nearest_root(
+            calc_value, 0.0, calc_value(0.0), sides, 5.0, 10, 20, 1e-10
+        )
+
+    gamma, converged = find_root(quadratic, (1.0, -1.0))
+    assert converged and np.isclose(gamma, -1.3, rtol=0.0, atol=1e-9)
+    gamma, converged = find_root(quadratic, (1.0,))
+    assert converged and np.isclose(gamma, 2.1, rtol=0.0, atol=1e-9)
+    gamma, converged = find_root(lambda gamma: gamma - 30.0, (1.0,))
+    assert converged and np.isclose(gamma, 30.0, rtol=0.0, atol=1e-9)
+    assert find_root(lambda gamma: gamma**2 + 1.0, (1.0, -1.0)) == (None, False)
+
+
 def test_physical_momentum_reversal_numerical_reproduces_formula():
     """
     For a classical Hamiltonian that is a kinetic energy quadratic in the physical

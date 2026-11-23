@@ -189,7 +189,7 @@ Up to 10 crossings are resolved per update time step, and each crossing time is 
    * - ``use_gauge_field_force``
      - Whether to add the gauge-field force (default ``False``).
    * - ``reverse_frustrated_hops``
-     - Whether to reverse the physical momentum along a weighted sum of derivative couplings (Eq. (E2) of Runeson and Manolopoulos (2023)) on a frustrated hop (default ``True``). The reversal conserves the kinetic energy (see :ref:`physical_z_conj` for its assumptions).
+     - Whether to reverse the physical momentum along a weighted sum of derivative couplings (Eq. (E2) of Runeson and Manolopoulos (2023)) on a frustrated hop (default ``True``). The reversal conserves the classical energy (see :ref:`physical_z_conj` for its assumptions).
 
 .. list-table:: MSMASH collected observables
    :header-rows: 1

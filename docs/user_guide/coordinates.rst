@@ -71,7 +71,7 @@ They are placed in an initialization Recipe after the classical coordinates are 
 The first entry evaluates the gradient of the quantum–classical interaction Hamiltonian with respect to :math:`z^{*}`, the second sets up displaced coordinates, and the third evaluates the classical force at those coordinates; ``initialize_physical_z_conj_matrix`` uses the gradient and the forces to determine :math:`S`.
 
 The MSMASH Algorithm includes these entries in its initialization Recipe, for use in its rescaling and frustrated-hop reversal of the physical momentum (described in :ref:`msmash_source`).
-The frustrated-hop reversal of the physical momentum assumes that the classical Hamiltonian is the sum of a kinetic energy that is quadratic in the physical momenta and a potential energy that depends on the physical positions only.
+By default, the frustrated-hop reversal of the physical momentum assumes that the classical Hamiltonian is the sum of a kinetic energy that is quadratic in the physical momenta and a potential energy that depends on the physical positions only.
 A Model for which this does not hold can supply the ``physical_momentum_reversal`` Ingredient, for example ``physical_momentum_reversal_numerical`` (see :ref:`Ingredients <ingredient>`).
 
 A Model can also supply :math:`S` through the ``physical_z_conj_matrix`` Ingredient (see :ref:`Ingredients <ingredient>`).

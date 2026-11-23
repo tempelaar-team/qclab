@@ -814,6 +814,7 @@ def numerical_fssh_hop(model, parameters, **kwargs):
 
     The shift is ``-1j * gamma * resc_dir_z``, where ``gamma`` is the root of the energy
     mismatch closest to zero. The algorithm is as follows:
+
     1. Define the energy mismatch as the change of the classical energy under the
        shift plus ``eigval_diff``, which is zero when the shift conserves the energy.
     2. Step outward from ``gamma = 0`` in both directions on a grid with ``num_points``
@@ -823,8 +824,8 @@ def numerical_fssh_hop(model, parameters, **kwargs):
        ``max_iter`` times.
     4. Refine the bracketing interval by bisection until the magnitude of the
        mismatch is less than the threshold.
-    5. If no sign change is found, return a zero shift and indicate that the hop was
-       frustrated.
+    5. If no sign change is found, or bisection does not converge, return a zero shift
+       and indicate that the hop was frustrated.
 
     .. rubric:: Keyword Arguments
     z : ndarray
@@ -872,35 +873,103 @@ def numerical_fssh_hop(model, parameters, **kwargs):
     mismatch_zero = calc_energy_mismatch(0.0)
     if np.abs(mismatch_zero) < thresh:
         return np.zeros_like(z), True
-    # Step outward from zero so that the root closest to zero is bracketed first.
+    gamma, converged = calc_nearest_root(
+        calc_energy_mismatch,
+        0.0,
+        mismatch_zero,
+        (1.0, -1.0),
+        gamma_range,
+        num_points,
+        max_iter,
+        thresh,
+    )
+    if not converged:
+        return np.zeros_like(z), False
+    return -1j * gamma * resc_dir_z, True
+
+
+def calc_nearest_root(
+    calc_value,
+    gamma_start,
+    value_start,
+    sides,
+    gamma_range,
+    num_points,
+    max_iter,
+    threshold,
+):
+    """
+    Find a root of a real function of ``gamma`` beyond ``gamma_start``, by stepping
+    outward from zero on the given sides.
+
+    The search steps outward from zero on a grid of ``num_points`` points per side, up
+    to ``gamma_range``, skipping points up to ``gamma_start``, and stops at the first
+    point where the sign of the function differs from that at ``gamma_start``. If there
+    is none, ``gamma_range`` is doubled and the search repeated, up to ``max_iter``
+    times. The bracketing interval is then refined by bisection until the magnitude of
+    the function is less than ``threshold``.
+
+    Parameters
+    ----------
+    calc_value : callable
+        Real function of ``gamma``.
+    gamma_start : float
+        Starting value of ``gamma``.
+    value_start : float
+        Value of the function at ``gamma_start``.
+    sides : tuple of float
+        Sides of zero to search, ``1.0`` for positive and ``-1.0`` for negative
+        ``gamma``; at each grid point, the sides are tried in the given order.
+    gamma_range : float
+        Initial range of ``gamma`` values to search over.
+    num_points : int
+        Number of grid points on each side within the range.
+    max_iter : int
+        Maximum number of times the range is doubled.
+    threshold : float
+        Threshold on the magnitude of the function for convergence.
+
+    Returns
+    -------
+    gamma : float or None
+        Root, or the last bisection midpoint if bisection does not converge; ``None``
+        if no sign change is found.
+    converged : bool
+        Whether the magnitude of the function at ``gamma`` is less than ``threshold``.
+    """
+    sign_start = np.sign(value_start)
+    gamma_inner = {side: gamma_start for side in sides}
     bracket = None
     for _ in range(max_iter):
         gamma_step = gamma_range / num_points
         for point_ind in range(1, num_points + 1):
-            for sign in (1.0, -1.0):
-                gamma_outer = sign * point_ind * gamma_step
-                if np.sign(calc_energy_mismatch(gamma_outer)) != np.sign(mismatch_zero):
-                    bracket = (gamma_outer - sign * gamma_step, gamma_outer)
+            for side in sides:
+                gamma_outer = side * point_ind * gamma_step
+                if np.abs(gamma_outer) <= np.abs(gamma_inner[side]):
+                    continue
+                if np.sign(calc_value(gamma_outer)) != sign_start:
+                    bracket = (gamma_inner[side], gamma_outer)
                     break
+                gamma_inner[side] = gamma_outer
             if bracket is not None:
                 break
         if bracket is not None:
             break
         gamma_range = gamma_range * 2.0
     if bracket is None:
-        return np.zeros_like(z), False
-    gamma_inner, gamma_outer = bracket
+        return None, False
+    gamma_lower, gamma_upper = bracket
     # 100 bisection steps reduce the bracket far below any useful resolution.
     for _ in range(100):
-        gamma_mid = 0.5 * (gamma_inner + gamma_outer)
-        mismatch_mid = calc_energy_mismatch(gamma_mid)
-        if np.abs(mismatch_mid) < thresh:
-            return -1j * gamma_mid * resc_dir_z, True
-        if np.sign(mismatch_mid) == np.sign(mismatch_zero):
-            gamma_inner = gamma_mid
+        gamma_mid = 0.5 * (gamma_lower + gamma_upper)
+        value_mid = calc_value(gamma_mid)
+        if np.abs(value_mid) < threshold:
+            return gamma_mid, True
+        if np.sign(value_mid) == sign_start:
+            gamma_lower = gamma_mid
         else:
-            gamma_outer = gamma_mid
-    return np.zeros_like(z), False
+            gamma_upper = gamma_mid
+    return gamma_mid, False
 
 
 def calc_alpha_n_mash(num_states):

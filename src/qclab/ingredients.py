@@ -438,10 +438,10 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
     Frustrated-hop reversal of the physical momentum, determined numerically from the
     classical Hamiltonian.
 
-    The coordinate is shifted as :math:`z \\rightarrow z - i\\gamma u`, where :math:`u`
-    is the unit vector along the physical position component of the reversal direction,
-    so that only the physical momentum changes. Of the values of :math:`\\gamma` for
-    which
+    The classical coordinates are shifted as
+    :math:`z \\rightarrow z - i\\gamma u`, where :math:`u` is the unit vector along the
+    physical position component of the reversal direction, so that only the physical
+    momentum changes. Of the values of :math:`\\gamma` for which
 
     .. math::
 
@@ -449,19 +449,20 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
 
     the nonzero one closest to zero is used. It lies on the side where the classical
     energy first decreases and is found by stepping outward on that side and refining
-    the first sign change by bisection. Unlike ``calc_z_physical_momentum_reversal``,
-    this does not assume that the classical Hamiltonian is a kinetic energy quadratic
-    in the physical momenta plus a potential energy of the physical positions only. If
-    no such value is found, a warning is logged and the coordinate is returned
-    unchanged.
+    the first sign change by bisection. Unlike the default reversal of MSMASH, this does
+    not assume that the classical Hamiltonian is a kinetic energy quadratic in the
+    physical momenta plus a potential energy of the physical positions only. If no such
+    value is found, a warning is logged and the classical coordinates are returned
+    unchanged. The Ingredient is called for a single trajectory; shapes use C for the
+    number of classical coordinates.
 
     .. rubric:: Keyword Args
 
-    z : ndarray
+    z : ndarray of shape (C,), dtype=complex128
         Current classical coordinates.
-    reversal_dir_z : ndarray
-        Direction of the reversal.
-    physical_z_conj_matrix : ndarray
+    reversal_dir_z : ndarray of shape (C,), dtype=complex128
+        Direction of the reversal; only its physical position component is used.
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
         Physical z-conjugation matrix :math:`S`.
 
     .. rubric:: Model Constants
@@ -471,13 +472,13 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
     physical_momentum_reversal_numerical_max_iter : int, default: 20
         Maximum number of times the range is doubled.
     physical_momentum_reversal_numerical_num_points : int, default: 10
-        Number of grid points within the range.
+        Number of grid points within the range on the searched side.
     physical_momentum_reversal_numerical_threshold : float, default: 1e-6
         Energy threshold for convergence.
 
     .. rubric:: Returns
 
-    z_reversed : ndarray
+    z_reversed : ndarray of shape (C,), dtype=complex128
         Classical coordinates after the reversal.
     """
     z = kwargs["z"]
@@ -508,46 +509,32 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
 
     # A small shift first identifies the side on which the classical energy decreases.
     gamma_small = 1e-6 * gamma_range / num_points
-    if calc_energy_change(gamma_small) < 0:
-        sign = 1.0
-    elif calc_energy_change(-gamma_small) < 0:
-        sign = -1.0
+    energy_change_small = calc_energy_change(gamma_small)
+    if energy_change_small < 0:
+        side = 1.0
     else:
-        # No physical momentum along the direction, so there is nothing to reverse.
-        return z.copy()
-    gamma_inner = sign * gamma_small
-    bracket = None
-    for _ in range(max_iter):
-        gamma_step = gamma_range / num_points
-        for point_ind in range(1, num_points + 1):
-            gamma_outer = sign * point_ind * gamma_step
-            if np.abs(gamma_outer) <= np.abs(gamma_inner):
-                continue
-            if calc_energy_change(gamma_outer) >= 0:
-                bracket = (gamma_inner, gamma_outer)
-                break
-            gamma_inner = gamma_outer
-        if bracket is not None:
-            break
-        gamma_range = gamma_range * 2.0
-    if bracket is None:
+        energy_change_small = calc_energy_change(-gamma_small)
+        if energy_change_small >= 0:
+            # No physical momentum along the direction, so there is nothing to reverse.
+            return z.copy()
+        side = -1.0
+    gamma, _ = functions.calc_nearest_root(
+        calc_energy_change,
+        side * gamma_small,
+        energy_change_small,
+        (side,),
+        gamma_range,
+        num_points,
+        max_iter,
+        thresh,
+    )
+    if gamma is None:
         logger.warning(
             "No reversal of the physical momentum conserving the classical energy was "
             "found; the classical coordinates are left unchanged."
         )
         return z.copy()
-    gamma_inner, gamma_outer = bracket
-    # 100 bisection steps reduce the bracket far below any useful resolution.
-    for _ in range(100):
-        gamma_mid = 0.5 * (gamma_inner + gamma_outer)
-        energy_change = calc_energy_change(gamma_mid)
-        if np.abs(energy_change) < thresh:
-            break
-        if energy_change < 0:
-            gamma_inner = gamma_mid
-        else:
-            gamma_outer = gamma_mid
-    return z - 1j * gamma_mid * unit_dir
+    return z - 1j * gamma * unit_dir
 
 
 def init_classical_boltzmann_harmonic(model, parameters, **kwargs):

@@ -3005,8 +3005,8 @@ def _resolve_crossing(
 
     Accepted-hop rescale: the energy-conservation solve goes through the shared FSSH hop
     path (the Model's ``hop`` Ingredient if it supplies one, e.g., ``hop_harmonic``,
-    closed form; otherwise the shared grid solve ``numerical_fssh_hop``), applied as a
-    shift along the z-space direction. A frustrated hop triggers the directional
+    closed form; otherwise the shared numerical solve, ``numerical_fssh_hop``), applied
+    as a shift along the z-space direction. A frustrated hop triggers the directional
     reversal of the physical momentum, gated by the ``reverse_frustrated_hops``
     setting. Both use the physical z-conjugation matrix.
     """
@@ -3023,14 +3023,15 @@ def _resolve_crossing(
         dh_state["dh_qc_dzc"],
         physical_z_conj_matrix,
     )
-    # A unit direction keeps the gamma grid of numerical_fssh_hop in range; the shift
-    # along it, and the reversal, are unchanged.
+    # A unit direction keeps gamma near the initial search range of numerical_fssh_hop;
+    # normalizing changes neither the shift, up to the accuracy of a numerical solve,
+    # nor the reversal.
     resc_dir_z_norm = np.linalg.norm(resc_dir_z)
     if resc_dir_z_norm > 0:
         resc_dir_z = resc_dir_z / resc_dir_z_norm
 
     # Accepted-hop energy-conserving rescale via the shared FSSH hop path (the Model's
-    # `hop` Ingredient if it supplies one, else the shared grid solve
+    # `hop` Ingredient if it supplies one, else the shared numerical solve,
     # numerical_fssh_hop), executed on a one-trajectory mini-state.
     hop_state = {
         "z_traj": z,
@@ -3044,7 +3045,7 @@ def _resolve_crossing(
         return z + z_shift, True
 
     # Frustrated hop: directional reversal of the physical momentum along the same
-    # direction, conserving the kinetic energy.
+    # direction, conserving the classical energy.
     if not reverse_frustrated:
         return z, False
     physical_momentum_reversal, has_physical_momentum_reversal = sim.model.get(
@@ -3182,7 +3183,8 @@ def update_act_surf_hop_msmash(
         Eigenvector gauge-fixing mode.
     sim.algorithm.settings.reverse_frustrated_hops:
         Whether to reverse the physical momentum on a frustrated hop. The reversal
-        conserves the kinetic energy.
+        conserves the classical energy, by default under the assumption given in the
+        Notes.
     sim.model.constants.num_quantum_states:
         Number of quantum states N.
     sim.model.constants.num_classical_coordinates:
@@ -3199,8 +3201,7 @@ def update_act_surf_hop_msmash(
         Quantum–classical interaction Hamiltonian, via update_h_q_tot.
     h_c: required
         Classical Hamiltonian, for the numerical_fssh_hop energy-conservation solve
-        and the kinetic energy in the frustrated-hop reversal of the physical
-        momentum.
+        and the frustrated-hop reversal of the physical momentum.
     dh_qc_dzc: optional, default: finite-difference estimate
         Gradient of the quantum–classical interaction Hamiltonian, for the direction
         of the rescaling and reversal; falls back to a finite-difference estimate when
@@ -3209,12 +3210,10 @@ def update_act_surf_hop_msmash(
         Gradient of the classical Hamiltonian, for the classical force; falls back to a
         finite-difference estimate when the Model omits it.
     hop: optional, default: ``functions.numerical_fssh_hop``
-        Model hop Ingredient for the accepted-hop energy-conservation solve; when
-        absent, the shared numerical_fssh_hop grid solve is used.
-    physical_momentum_reversal: optional, default: ``calc_z_physical_momentum_reversal``
+        Model hop Ingredient for the accepted-hop energy-conservation solve.
+    physical_momentum_reversal: optional, default: ``functions.calc_z_physical_momentum_reversal``
         Model Ingredient for the frustrated-hop reversal of the physical momentum, for
-        example ``physical_momentum_reversal_numerical``; when absent,
-        functions.calc_z_physical_momentum_reversal is used.
+        example ``physical_momentum_reversal_numerical``.
     gauge_field_force: optional, used only when use_gauge_field_force is True
         Gauge-field contribution to the quantum–classical force, via
         update_quantum_classical_force.
