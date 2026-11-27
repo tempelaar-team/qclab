@@ -30,6 +30,20 @@ except ImportError:
     from reference_settings import model_sim_settings, model_settings
 
 
+def output_atol(algorithm_class):
+    """
+    Absolute tolerance for comparing the output of an Algorithm to its reference data.
+
+    MSMASH gets a looser tolerance because its deterministic hops make the output
+    sensitive to round-off: in the FMOComplex reference run, one trajectory undergoes
+    repeated frustrated hops in quick succession, and round-off that differs between
+    platforms shifts its density matrix by about 1e-5.
+    """
+    if algorithm_class is MultiStateMappingApproachToSurfaceHopping:
+        return 1e-4
+    return 1e-8
+
+
 def test_output_serial():
     """
     This test verifies that the serial driver produces the expected results.
@@ -76,7 +90,10 @@ def test_output_serial():
             )
             for key, val in data.data_dict.items():
                 np.testing.assert_allclose(
-                    val, data_correct.data_dict[key], rtol=1e-5, atol=1e-8
+                    val,
+                    data_correct.data_dict[key],
+                    rtol=1e-5,
+                    atol=output_atol(algorithm_class),
                 )
     return
 
@@ -129,7 +146,10 @@ def test_output_multiprocessing():
             )
             for key, val in data.data_dict.items():
                 np.testing.assert_allclose(
-                    val, data_correct.data_dict[key], rtol=1e-5, atol=1e-8
+                    val,
+                    data_correct.data_dict[key],
+                    rtol=1e-5,
+                    atol=output_atol(algorithm_class),
                 )
     return
 

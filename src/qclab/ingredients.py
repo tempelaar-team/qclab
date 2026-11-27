@@ -135,7 +135,7 @@ def h_q_two_level(model, parameters, **kwargs):
     """
     Quantum Hamiltonian for a two-level system.
 
-    :math:`H_{nm} = \\delta_{nm}\\mathrm{two\\_level\\_nn}+(1-\\delta_{nm})(\\mathrm{two\\_level\\_nm\\_re} + i\, \\mathrm{two\\_level\\_nm\\_im})`
+    :math:`H_{nm} = \\delta_{nm}\\mathrm{two\\_level\\_nn}+(1-\\delta_{nm})(\\mathrm{two\\_level\\_nm\\_re} + i\\, \\mathrm{two\\_level\\_nm\\_im})`
 
     .. rubric:: Keyword Args
 
