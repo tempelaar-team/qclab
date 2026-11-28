@@ -9,6 +9,7 @@ import logging
 import numpy as np
 import copy
 from qclab import functions, Simulation
+import qclab.numerical_constants as numerical_constants
 
 logger = logging.getLogger(__name__)
 
@@ -779,4 +780,249 @@ def initialize_act_surf_msmash(
         np.abs(functions.transform_vec(state[wf_db_name], state[eigvecs_name])) ** 2,
         axis=1,
     ).astype(int)
+    return state, parameters
+
+
+def initialize_z_probe(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    z_name: str = "z",
+    dh_qc_dzc_name: str = "dh_qc_dzc",
+    z_probe_name: str = "z_probe",
+):
+    """
+    Initializes the probe coordinates for the Hessian of the classical Hamiltonian.
+
+    Optional Keyword Arguments
+    --------------------------
+    z_name:
+        Name of classical coordinates in the State object.
+    dh_qc_dzc_name:
+        Name of the gradient of the quantum–classical interaction Hamiltonian in the
+        State object.
+    z_probe_name:
+        Name under which to store the probe coordinates in the State object.
+
+    Constants and Settings
+    ----------------------
+    sim.model.constants.h_c_hessian_finite_difference_delta: float, default: numerical_constants.H_C_HESSIAN_FINITE_DIFFERENCE_DELTA
+        Displacement of the probe coordinates from zero.
+    sim.model.update_dh_qc_dzc: Bool, default: True
+        If False, the gradient is taken from a single trajectory.
+
+    Ingredients
+    -----------
+    physical_z_conj_matrix: optional
+        Physical z-conjugation matrix. If present, no probe coordinates are needed.
+
+    Reads
+    -----
+    state[z_name]: ndarray of shape (B, C), dtype=complex128
+        Complex-valued classical coordinates.
+    state[dh_qc_dzc_name]: tuple
+        Gradient of the quantum–classical interaction Hamiltonian in sparse format.
+
+    Writes
+    ------
+    state[z_probe_name]: ndarray of shape (P, C), dtype=complex128
+        Probe coordinates, displaced from zero along the positive and negative,
+        real and imaginary directions of each classical coordinate.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * C = sim.model.constants.num_classical_coordinates
+    * P = 4C, or 0 if the Hessian of the classical Hamiltonian is not needed
+    * The Hessian follows from the gradient of the classical Hamiltonian evaluated
+      at the probe coordinates. It is only needed by
+      ``initialize_physical_z_conj_matrix`` if the gradient of the quantum–classical
+      interaction Hamiltonian does not determine the physical z-conjugation matrix,
+      which is defined there. If it is not needed, an empty array is written.
+    """
+    num_classical_coordinates = sim.model.constants.num_classical_coordinates
+    state[z_probe_name] = np.zeros((0, num_classical_coordinates), dtype=complex)
+    _, has_physical_z_conj_matrix = sim.model.get("physical_z_conj_matrix")
+    if has_physical_z_conj_matrix:
+        return state, parameters
+    # A gradient that is independent of z is fully represented by one trajectory.
+    num_trajs_used = len(state[z_name]) if sim.model.update_dh_qc_dzc else 1
+    determined_directions, _ = functions.calc_determined_directions_physical_z_conj(
+        *functions.calc_dh_qc_dzc_matrices_physical_z_conj(
+            state[dh_qc_dzc_name], num_trajs_used
+        )
+    )
+    if determined_directions.shape[1] == num_classical_coordinates:
+        return state, parameters
+    delta_z = sim.model.constants.get(
+        "h_c_hessian_finite_difference_delta",
+        numerical_constants.H_C_HESSIAN_FINITE_DIFFERENCE_DELTA,
+    )
+    identity = np.eye(num_classical_coordinates, dtype=complex)
+    state[z_probe_name] = delta_z * np.concatenate(
+        (identity, -identity, 1j * identity, -1j * identity)
+    )
+    return state, parameters
+
+
+def initialize_physical_z_conj_matrix(
+    sim: Simulation,
+    state: dict,
+    parameters: dict,
+    z_name: str = "z",
+    dh_qc_dzc_name: str = "dh_qc_dzc",
+    classical_force_probe_name: str = "classical_force_probe",
+    physical_z_conj_matrix_name: str = "physical_z_conj_matrix",
+):
+    """
+    Initializes the physical z-conjugation matrix.
+
+    The physical z-conjugation matrix :math:`S` is the symmetric unitary matrix for
+    which :math:`z \\rightarrow S z^{*}` reverses all physical momenta while leaving
+    all physical positions unchanged. It is determined from
+
+    .. math::
+
+        \\frac{\\partial \\hat{H}_{\\mathrm{q-c}}}{\\partial z_{\\xi}^{*}} = \\sum_{\\xi'} S_{\\xi\\xi'} \\left(\\frac{\\partial \\hat{H}_{\\mathrm{q-c}}}{\\partial z_{\\xi'}^{*}}\\right)^{\\dagger}
+
+    Optional Keyword Arguments
+    --------------------------
+    z_name:
+        Name of classical coordinates in the State object.
+    dh_qc_dzc_name:
+        Name of the gradient of the quantum–classical interaction Hamiltonian in the
+        State object.
+    classical_force_probe_name:
+        Name of the gradient of the classical Hamiltonian at the probe coordinates
+        in the State object.
+    physical_z_conj_matrix_name:
+        Name under which to store the physical z-conjugation matrix in the State object.
+
+    Constants and Settings
+    ----------------------
+    sim.model.constants.h_c_hessian_finite_difference_delta: float, default: numerical_constants.H_C_HESSIAN_FINITE_DIFFERENCE_DELTA
+        Displacement of the probe coordinates from zero.
+    sim.model.update_dh_qc_dzc: Bool, default: True
+        If False, the gradient is taken from a single trajectory.
+    sim.settings.debug: Bool, default: False
+        If True, information on how the matrix was determined is logged.
+
+    Ingredients
+    -----------
+    physical_z_conj_matrix: optional
+        Physical z-conjugation matrix. Overrides the numerical determination.
+    h_c:
+        Classical Hamiltonian.
+    h_qc:
+        Quantum–classical interaction Hamiltonian.
+
+    Reads
+    -----
+    state[z_name]: ndarray of shape (B, C), dtype=complex128
+        Complex-valued classical coordinates.
+    state[dh_qc_dzc_name]: tuple
+        Gradient of the quantum–classical interaction Hamiltonian in sparse format.
+    state[classical_force_probe_name]: ndarray of shape (P, C), dtype=complex128
+        Gradient of the classical Hamiltonian at the probe coordinates. Optional.
+
+    Writes
+    ------
+    state[physical_z_conj_matrix_name]: ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix.
+
+    Notes
+    -----
+    * B = sim.settings.batch_size
+    * C = sim.model.constants.num_classical_coordinates
+    * P = 4C, or 0 if the Hessian of the classical Hamiltonian is not needed
+    * When :math:`z = U z'`, with physical positions and momenta proportional to the
+      real and imaginary parts of :math:`z'`, then :math:`S = U U^{T}`. The physical
+      position and momentum components of :math:`z` are :math:`(z + S z^{*})/2` and
+      :math:`(z - S z^{*})/2`.
+    * The relation above holds when the quantum–classical interaction Hamiltonian
+      does not depend on physical momenta. Directions of the classical coordinates
+      that it leaves undetermined are resolved by the Hessian of the classical
+      Hamiltonian, if the gradient of the classical Hamiltonian at the probe
+      coordinates is present in the State object.
+    * If no valid matrix is found, a warning is logged and the identity is used.
+    """
+    z = state[z_name]
+    num_classical_coordinates = sim.model.constants.num_classical_coordinates
+    identity = np.eye(num_classical_coordinates, dtype=complex)
+    physical_z_conj_matrix_func, has_physical_z_conj_matrix = sim.model.get(
+        "physical_z_conj_matrix"
+    )
+    if has_physical_z_conj_matrix:
+        # Use the matrix provided by the Model, checking only its general properties.
+        physical_z_conj_matrix = np.asarray(
+            physical_z_conj_matrix_func(sim.model, parameters), dtype=complex
+        )
+        error = functions.calc_symmetric_unitary_error(physical_z_conj_matrix)
+        if error > numerical_constants.PHYSICAL_Z_CONJ_ERROR_THRESHOLD:
+            logger.warning(
+                "The physical_z_conj_matrix provided by the Model is not "
+                "symmetric and unitary.\nDeviation: %s",
+                error,
+            )
+        state[physical_z_conj_matrix_name] = physical_z_conj_matrix
+        return state, parameters
+    # A gradient that is independent of z is fully represented by one trajectory.
+    num_trajs_used = len(z) if sim.model.update_dh_qc_dzc else 1
+    dh_qc_dzc_matrix, dh_qc_dzc_dagger_matrix = (
+        functions.calc_dh_qc_dzc_matrices_physical_z_conj(
+            state[dh_qc_dzc_name], num_trajs_used
+        )
+    )
+    determined_directions, image = functions.calc_determined_directions_physical_z_conj(
+        dh_qc_dzc_matrix, dh_qc_dzc_dagger_matrix
+    )
+    h_c_hessian = None
+    if len(state.get(classical_force_probe_name, ())) > 0:
+        delta_z = sim.model.constants.get(
+            "h_c_hessian_finite_difference_delta",
+            numerical_constants.H_C_HESSIAN_FINITE_DIFFERENCE_DELTA,
+        )
+        h_c_hessian = functions.calc_h_c_hessian(
+            state[classical_force_probe_name], delta_z
+        )
+    physical_z_conj_matrix, num_arbitrary = functions.calc_physical_z_conj_matrix(
+        determined_directions, image, h_c_hessian
+    )
+    error = functions.calc_physical_z_conj_matrix_error(
+        sim,
+        parameters,
+        z,
+        physical_z_conj_matrix,
+        dh_qc_dzc_matrix,
+        dh_qc_dzc_dagger_matrix,
+    )
+    if sim.settings.debug:
+        logger.info(
+            "Physical z-conjugation matrix: %s of %s directions determined by h_qc, "
+            "%s fixed arbitrarily. Error: %s",
+            determined_directions.shape[1],
+            num_classical_coordinates,
+            num_arbitrary,
+            error,
+        )
+    if error > numerical_constants.PHYSICAL_Z_CONJ_ERROR_THRESHOLD:
+        logger.warning(
+            "The physical z-conjugation matrix could not be determined; assuming that "
+            "the real and imaginary parts of z are proportional to physical "
+            "positions and momenta.\n"
+            "Otherwise, provide a physical_z_conj_matrix Ingredient.\n"
+            "Error: %s",
+            error,
+        )
+        state[physical_z_conj_matrix_name] = identity
+        return state, parameters
+    # Remove numerical noise by projecting onto the nearest symmetric unitary matrix.
+    # S is complex symmetric rather than Hermitian, hence the unconjugated transposes.
+    left, _, right_dagger = np.linalg.svd(
+        0.5 * (physical_z_conj_matrix + physical_z_conj_matrix.T)
+    )
+    physical_z_conj_matrix = left @ right_dagger
+    state[physical_z_conj_matrix_name] = 0.5 * (
+        physical_z_conj_matrix + physical_z_conj_matrix.T
+    )
     return state, parameters

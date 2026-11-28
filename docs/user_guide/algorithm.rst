@@ -174,7 +174,8 @@ Multi-State Mapping Approach to Surface Hopping Example
 
 The multi-state mapping approach to surface hopping (MSMASH) of Runeson and Manolopoulos (J. Chem. Phys. **159**, 094115, 2023) is defined in the ``qclab.algorithms.MultiStateMappingApproachToSurfaceHopping`` module.
 The diabatic wavefunction is sampled from the focused spin-mapping ensemble, the classical coordinates are propagated on the adiabatic surface with the largest population, and hops occur deterministically when that surface changes.
-Each crossing is located by bisection and resolved by an energy-conserving momentum rescaling, or by a momentum reversal if the hop is frustrated.
+The focused ensemble used to sample the diabatic wavefunction is constructed in the diabatic basis of the Model, so the same system defined in a different diabatic basis generally yields different dynamics.
+Each crossing is located by bisection and resolved by an energy-conserving rescaling of the physical momentum, or by a reversal of the physical momentum if the hop is frustrated.
 Up to 10 crossings are resolved per update time step, and each crossing time is located with 10 bisection iterations, matching the multimash reference implementation.
 
 .. list-table:: MSMASH settings
@@ -188,7 +189,7 @@ Up to 10 crossings are resolved per update time step, and each crossing time is 
    * - ``use_gauge_field_force``
      - Whether to add the gauge-field force (default ``False``).
    * - ``reverse_frustrated_hops``
-     - Whether to reverse the momentum along the rescaling direction on a frustrated hop (default ``True``). The reversal is not representation-invariant.
+     - Whether to reverse the physical momentum along a weighted sum of derivative couplings (Eq. (E2) of Runeson and Manolopoulos (2023)) on a frustrated hop (default ``True``). The reversal conserves the classical energy (see :ref:`physical_z_conj` for its assumptions).
 
 .. list-table:: MSMASH collected observables
    :header-rows: 1

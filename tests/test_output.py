@@ -30,6 +30,35 @@ except ImportError:
     from reference_settings import model_sim_settings, model_settings
 
 
+# Number of collect time steps (t < 4) over which the MSMASH density matrix of
+# FMOComplex is compared to its reference data.
+MSMASH_FMO_NUM_COMPARED_TIME_POINTS = 40
+
+
+def assert_output_matches_reference(data, data_correct, model_class, algorithm_class):
+    """
+    Compares the output of a simulation to its reference data.
+
+    For MSMASH with FMOComplex, the density matrix is compared at early times only. In
+    this simulation, one trajectory undergoes repeated frustrated hops in quick
+    succession from about t = 6, where round-off that differs between platforms
+    changes the crossing times and the number of crossings. Over the whole simulation,
+    the density matrix is instead checked for unit trace and Hermiticity.
+    """
+    early_times_only = (
+        algorithm_class is MultiStateMappingApproachToSurfaceHopping
+        and model_class is FMOComplex
+    )
+    for key, val in data.data_dict.items():
+        val_correct = data_correct.data_dict[key]
+        if early_times_only and key == "dm_db":
+            np.testing.assert_allclose(np.trace(val, axis1=1, axis2=2), 1.0, atol=1e-10)
+            np.testing.assert_allclose(val, np.conj(np.swapaxes(val, 1, 2)), atol=1e-12)
+            val = val[:MSMASH_FMO_NUM_COMPARED_TIME_POINTS]
+            val_correct = val_correct[:MSMASH_FMO_NUM_COMPARED_TIME_POINTS]
+        np.testing.assert_allclose(val, val_correct, rtol=1e-5, atol=1e-8)
+
+
 def test_output_serial():
     """
     This test verifies that the serial driver produces the expected results.
@@ -74,10 +103,9 @@ def test_output_serial():
             data_correct = Data().load(
                 os.path.join(reference_folder, f"{model_name}_{algorithm_name}.h5")
             )
-            for key, val in data.data_dict.items():
-                np.testing.assert_allclose(
-                    val, data_correct.data_dict[key], rtol=1e-5, atol=1e-8
-                )
+            assert_output_matches_reference(
+                data, data_correct, model_class, algorithm_class
+            )
     return
 
 
@@ -127,10 +155,9 @@ def test_output_multiprocessing():
             data_correct = Data().load(
                 os.path.join(reference_folder, f"{model_name}_{algorithm_name}.h5")
             )
-            for key, val in data.data_dict.items():
-                np.testing.assert_allclose(
-                    val, data_correct.data_dict[key], rtol=1e-5, atol=1e-8
-                )
+            assert_output_matches_reference(
+                data, data_correct, model_class, algorithm_class
+            )
     return
 
 

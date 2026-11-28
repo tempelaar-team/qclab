@@ -11,13 +11,10 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
     """
     Multi-state mapping approach to surface hopping (MSMASH) algorithm class.
 
-    The frustrated-hop momentum reversal is controlled by the
-    ``reverse_frustrated_hops`` keyword argument (default ``True``). This reversal is
-    not representation-invariant; set it to ``False`` when basis invariance is required.
-
     Reference publication:
 
-    Runeson & Manolopoulos. J. Chem. Phys. 2023, 159 (9), 094115. https://doi.org/10.1063/5.0158147.
+    Runeson & Manolopoulos. J. Chem. Phys. 2023, 159 (9), 094115.
+    https://doi.org/10.1063/5.0158147.
 
     Johan Runeson is acknowledged for reviewing this implementation.
     """
@@ -33,8 +30,6 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
         self.default_settings = {
             "gauge_fixing": "sign_overlap",
             "use_gauge_field_force": False,
-            # This reversal is not representation-invariant; set False for basis
-            # invariance.
             "reverse_frustrated_hops": True,
         }
         super().__init__(self.default_settings, settings)
@@ -42,6 +37,16 @@ class MultiStateMappingApproachToSurfaceHopping(Algorithm):
     initialization_recipe = [
         tasks.initialize_variable_objects,
         tasks.initialize_z,
+        # Begin physical z-conjugation matrix.
+        tasks.update_dh_qc_dzc,
+        tasks.initialize_z_probe,
+        partial(
+            tasks.update_classical_force,
+            z_name="z_probe",
+            classical_force_name="classical_force_probe",
+        ),
+        tasks.initialize_physical_z_conj_matrix,
+        # End physical z-conjugation matrix.
         tasks.initialize_wf_db_msmash,
         tasks.update_h_q_tot,
         partial(

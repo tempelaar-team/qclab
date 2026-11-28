@@ -2,6 +2,7 @@
 This module contains ingredients for use in Model classes.
 """
 
+import logging
 import numpy as np
 import copy
 from qclab import functions
@@ -10,6 +11,8 @@ from qclab.utils import DISABLE_ASE
 
 if not (DISABLE_ASE):
     from qclab.interfaces import QCLabQChemInterface
+
+logger = logging.getLogger(__name__)
 
 
 def h_c_harmonic(model, parameters, **kwargs):
@@ -132,7 +135,7 @@ def h_q_two_level(model, parameters, **kwargs):
     """
     Quantum Hamiltonian for a two-level system.
 
-    :math:`H_{nm} = \\delta_{nm}\\mathrm{two\\_level\\_nn}+(1-\\delta_{nm})(\\mathrm{two\\_level\\_nm\\_re} + i\, \\mathrm{two\\_level\\_nm\\_im})`
+    :math:`H_{nm} = \\delta_{nm}\\mathrm{two\\_level\\_nn}+(1-\\delta_{nm})(\\mathrm{two\\_level\\_nm\\_re} + i\\, \\mathrm{two\\_level\\_nm\\_im})`
 
     .. rubric:: Keyword Args
 
@@ -428,6 +431,110 @@ def hop_free(model, parameters, **kwargs):
         return shift, True
     shift = np.zeros_like(z)
     return shift, False
+
+
+def physical_momentum_reversal_numerical(model, parameters, **kwargs):
+    """
+    Frustrated-hop reversal of the physical momentum, determined numerically from the
+    classical Hamiltonian.
+
+    The classical coordinates are shifted as
+    :math:`z \\rightarrow z - i\\gamma u`, where :math:`u` is the unit vector along the
+    physical position component of the reversal direction, so that only the physical
+    momentum changes. Of the values of :math:`\\gamma` for which
+
+    .. math::
+
+        H_{\\mathrm{c}}(z - i\\gamma u) = H_{\\mathrm{c}}(z),
+
+    the nonzero one closest to zero is used. It is the root closest to zero of the
+    change of the classical energy divided by :math:`\\gamma`, found by stepping
+    outward from zero in doubling steps up to the first sign change, or up to the first
+    minimum of its magnitude, and refining the root by bisection. Unlike the default
+    reversal of MSMASH, this does not assume that the classical Hamiltonian is a
+    kinetic energy quadratic in the physical momenta plus a potential energy of the
+    physical positions only. If no such value is found, a warning is logged and the
+    classical coordinates are returned unchanged. They are also returned unchanged,
+    without a warning, if the reversal direction has no physical position component or
+    the classical energy decreases on neither side of zero, so that there is no
+    physical momentum to reverse. The Ingredient is called for a single trajectory;
+    shapes use C for the number of classical coordinates.
+
+    .. rubric:: Keyword Args
+
+    z : ndarray of shape (C,), dtype=complex128
+        Current classical coordinates.
+    reversal_dir_z : ndarray of shape (C,), dtype=complex128
+        Direction of the reversal; only its physical position component is used.
+    physical_z_conj_matrix : ndarray of shape (C, C), dtype=complex128
+        Physical z-conjugation matrix :math:`S`.
+
+    .. rubric:: Model Constants
+
+    physical_momentum_reversal_numerical_gamma_initial : float, default: 1e-6
+        First value of :math:`\\gamma` on each side of zero, from which the search
+        doubles.
+    physical_momentum_reversal_numerical_max_doublings : int, default: 60
+        Maximum number of doublings of :math:`\\gamma` on each side of zero.
+    physical_momentum_reversal_numerical_threshold : float, default: 1e-6
+        Threshold for convergence on the change of the classical energy divided by
+        :math:`\\gamma`.
+
+    .. rubric:: Returns
+
+    z_reversed : ndarray of shape (C,), dtype=complex128
+        Classical coordinates after the reversal.
+    """
+    z = kwargs["z"]
+    physical_z_conj_matrix = kwargs["physical_z_conj_matrix"]
+    gamma_initial = model.constants.get(
+        "physical_momentum_reversal_numerical_gamma_initial", 1e-6
+    )
+    max_doublings = model.constants.get(
+        "physical_momentum_reversal_numerical_max_doublings", 60
+    )
+    thresh = model.constants.get("physical_momentum_reversal_numerical_threshold", 1e-6)
+    unit_dir = functions.calc_z_physical_position_component(
+        kwargs["reversal_dir_z"], physical_z_conj_matrix
+    )
+    unit_dir_norm = np.linalg.norm(unit_dir)
+    if unit_dir_norm == 0:
+        return z.copy()
+    unit_dir = unit_dir / unit_dir_norm
+    h_c, _ = model.get("h_c")
+    init_energy = np.real(h_c(model, parameters, z=z[None], batch_size=1)[0])
+
+    def calc_energy_change(gamma):
+        energy = h_c(
+            model, parameters, z=(z - 1j * gamma * unit_dir)[None], batch_size=1
+        )
+        return np.real(energy[0]) - init_energy
+
+    energy_change_positive = calc_energy_change(gamma_initial)
+    energy_change_negative = calc_energy_change(-gamma_initial)
+    if energy_change_positive >= 0 and energy_change_negative >= 0:
+        # No physical momentum along the direction, so there is nothing to reverse.
+        return z.copy()
+    # The energy change vanishes at zero, so its nonzero roots are the roots of the
+    # energy change divided by gamma, whose value at zero is the slope there.
+    slope_zero = (energy_change_positive - energy_change_negative) / (
+        2.0 * gamma_initial
+    )
+    gamma, _ = functions.calc_nearest_root(
+        lambda gamma: calc_energy_change(gamma) / gamma,
+        slope_zero,
+        (1.0, -1.0),
+        gamma_initial,
+        max_doublings,
+        thresh,
+    )
+    if gamma is None:
+        logger.warning(
+            "No reversal of the physical momentum conserving the classical energy was "
+            "found; the classical coordinates are left unchanged."
+        )
+        return z.copy()
+    return z - 1j * gamma * unit_dir
 
 
 def init_classical_boltzmann_harmonic(model, parameters, **kwargs):
