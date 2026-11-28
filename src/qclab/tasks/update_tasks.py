@@ -3023,13 +3023,6 @@ def _resolve_crossing(
         dh_state["dh_qc_dzc"],
         physical_z_conj_matrix,
     )
-    # A unit direction keeps gamma near the initial search range of numerical_fssh_hop;
-    # normalizing changes neither the shift, up to the accuracy of a numerical solve,
-    # nor the reversal.
-    resc_dir_z_norm = np.linalg.norm(resc_dir_z)
-    if resc_dir_z_norm > 0:
-        resc_dir_z = resc_dir_z / resc_dir_z_norm
-
     # Accepted-hop energy-conserving rescale via the shared FSSH hop path (the Model's
     # `hop` Ingredient if it supplies one, else the shared numerical solve,
     # numerical_fssh_hop), executed on a one-trajectory mini-state.

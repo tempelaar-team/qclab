@@ -539,25 +539,69 @@ def test_z_physical_momentum_reversal():
 
 def test_calc_nearest_root():
     """
-    calc_nearest_root finds the first root counted from zero on the given sides,
-    doubles the search range when needed, and returns None without a sign change.
+    calc_nearest_root finds the root closest to zero on the given sides, including
+    roots close to zero, roots close to each other, roots on both sides, distant roots
+    and a root where the function touches zero, and returns None without a root.
     """
 
-    def quadratic(gamma):
-        return (gamma + 1.3) * (gamma - 2.1)
-
-    def find_root(calc_value, sides):
+    def find_root(calc_value, sides=(1.0, -1.0)):
         return functions.calc_nearest_root(
-            calc_value, 0.0, calc_value(0.0), sides, 5.0, 10, 20, 1e-10
+            calc_value, calc_value(0.0), sides, 1e-6, 60, 1e-10
         )
 
-    gamma, converged = find_root(quadratic, (1.0, -1.0))
-    assert converged and np.isclose(gamma, -1.3, rtol=0.0, atol=1e-9)
-    gamma, converged = find_root(quadratic, (1.0,))
-    assert converged and np.isclose(gamma, 2.1, rtol=0.0, atol=1e-9)
-    gamma, converged = find_root(lambda gamma: gamma - 30.0, (1.0,))
-    assert converged and np.isclose(gamma, 30.0, rtol=0.0, atol=1e-9)
-    assert find_root(lambda gamma: gamma**2 + 1.0, (1.0, -1.0)) == (None, False)
+    def assert_root(calc_value, root, sides=(1.0, -1.0)):
+        gamma, converged = find_root(calc_value, sides)
+        assert converged and np.isclose(gamma, root, rtol=1e-6, atol=1e-9)
+
+    # Roots on both sides: the closer one, also when the farther one is found first.
+    assert_root(lambda gamma: (gamma + 1.3) * (gamma - 2.1), -1.3)
+    assert_root(lambda gamma: (gamma + 0.015) * (gamma - 0.27), -0.015)
+    # A side on which the function first moves away from zero yields no root; for a
+    # parabola, its root is the farther one.
+    assert_root(lambda gamma: (gamma + 1.3) * (gamma - 2.1), -1.3, sides=(-1.0,))
+    no_root = find_root(lambda gamma: (gamma + 1.3) * (gamma - 2.1), (1.0,))
+    assert no_root == (None, False)
+    # Both roots on one side, close to zero or close to each other.
+    assert_root(lambda gamma: (gamma - 0.01) * (gamma - 0.03), 0.01)
+    assert_root(lambda gamma: (gamma + 0.288) * (gamma + 0.049), -0.049)
+    assert_root(lambda gamma: (gamma - 1.0) * (gamma - 1.5), 1.0)
+    # A distant root and a root where the function touches zero.
+    assert_root(lambda gamma: gamma - 30.0, 30.0)
+    gamma, converged = find_root(lambda gamma: (gamma - 0.7) ** 2)
+    assert converged and np.isclose(gamma, 0.7, rtol=0.0, atol=1e-4)
+    # No root.
+    assert find_root(lambda gamma: gamma**2 + 1.0) == (None, False)
+    assert find_root(lambda gamma: (gamma - 0.7) ** 2 + 1e-3) == (None, False)
+
+
+def test_numerical_fssh_hop_matches_hop_harmonic():
+    """
+    For harmonic classical coordinates, numerical_fssh_hop makes the same hop decisions
+    and shifts as the closed form of hop_harmonic, for upward and downward hops,
+    including hops whose roots are close to zero and close to each other.
+    """
+    model = SpinBoson({"A": 6})
+    model.initialize_constants()
+    model.constants.numerical_fssh_hop_threshold = 1e-12
+    rng = np.random.default_rng(21)
+    num_allowed = 0
+    for _ in range(200):
+        z = rng.normal(size=6) + 1j * rng.normal(size=6)
+        z = z * 10.0 ** rng.uniform(-3.0, 1.0)
+        resc_dir_z = rng.normal(size=6) + 1j * rng.normal(size=6)
+        resc_dir_z = resc_dir_z * 10.0 ** rng.uniform(-2.0, 2.0)
+        eigval_diff = rng.choice([-1.0, 1.0]) * 10.0 ** rng.uniform(-6.0, 0.5)
+        shift_formula, hop_successful_formula = ingredients.hop_harmonic(
+            model, {}, z=z, resc_dir_z=resc_dir_z, eigval_diff=eigval_diff
+        )
+        shift_numerical, hop_successful_numerical = functions.numerical_fssh_hop(
+            model, {}, z=z, resc_dir_z=resc_dir_z, eigval_diff=eigval_diff
+        )
+        assert hop_successful_numerical == hop_successful_formula
+        assert np.allclose(shift_numerical, shift_formula, rtol=0.0, atol=1e-6)
+        num_allowed += hop_successful_formula
+    # Both allowed and frustrated hops are covered.
+    assert 20 < num_allowed < 180
 
 
 def test_physical_momentum_reversal_numerical_reproduces_formula():
@@ -612,6 +656,7 @@ def test_physical_momentum_reversal_numerical_quartic_kinetic_energy():
         )
 
     model.ingredients = model.ingredients + [("h_c", h_c_quartic)]
+    model.constants.physical_momentum_reversal_numerical_threshold = 1e-9
     rng = np.random.default_rng(17)
     z = rng.normal(size=6) + 1j * rng.normal(size=6)
     direction = rng.normal(size=6) + 1j * rng.normal(size=6)

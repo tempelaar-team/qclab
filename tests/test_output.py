@@ -30,7 +30,7 @@ except ImportError:
     from reference_settings import model_sim_settings, model_settings
 
 
-# Number of collect time points (t < 4) over which the MSMASH density matrix of
+# Number of collect time steps (t < 4) over which the MSMASH density matrix of
 # FMOComplex is compared to its reference data.
 MSMASH_FMO_NUM_COMPARED_TIME_POINTS = 40
 
@@ -40,10 +40,10 @@ def assert_output_matches_reference(data, data_correct, model_class, algorithm_c
     Compares the output of a simulation to its reference data.
 
     For MSMASH with FMOComplex, the density matrix is compared at early times only. In
-    this run, one trajectory undergoes repeated frustrated hops in quick succession
-    from about t = 6, where round-off that differs between platforms changes the
-    crossing times and the number of crossings. Over the whole run, the density matrix
-    is instead checked for unit trace and Hermiticity.
+    this simulation, one trajectory undergoes repeated frustrated hops in quick
+    succession from about t = 6, where round-off that differs between platforms
+    changes the crossing times and the number of crossings. Over the whole simulation,
+    the density matrix is instead checked for unit trace and Hermiticity.
     """
     early_times_only = (
         algorithm_class is MultiStateMappingApproachToSurfaceHopping

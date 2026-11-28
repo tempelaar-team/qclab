@@ -447,14 +447,18 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
 
         H_{\\mathrm{c}}(z - i\\gamma u) = H_{\\mathrm{c}}(z),
 
-    the nonzero one closest to zero is used. It lies on the side where the classical
-    energy first decreases and is found by stepping outward on that side and refining
-    the first sign change by bisection. Unlike the default reversal of MSMASH, this does
-    not assume that the classical Hamiltonian is a kinetic energy quadratic in the
-    physical momenta plus a potential energy of the physical positions only. If no such
-    value is found, a warning is logged and the classical coordinates are returned
-    unchanged. The Ingredient is called for a single trajectory; shapes use C for the
-    number of classical coordinates.
+    the nonzero one closest to zero is used. It is the root closest to zero of the
+    change of the classical energy divided by :math:`\\gamma`, found by stepping
+    outward from zero in doubling steps up to the first sign change, or up to the first
+    minimum of its magnitude, and refining the root by bisection. Unlike the default
+    reversal of MSMASH, this does not assume that the classical Hamiltonian is a
+    kinetic energy quadratic in the physical momenta plus a potential energy of the
+    physical positions only. If no such value is found, a warning is logged and the
+    classical coordinates are returned unchanged. They are also returned unchanged,
+    without a warning, if the reversal direction has no physical position component or
+    the classical energy decreases on neither side of zero, so that there is no
+    physical momentum to reverse. The Ingredient is called for a single trajectory;
+    shapes use C for the number of classical coordinates.
 
     .. rubric:: Keyword Args
 
@@ -467,14 +471,14 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
 
     .. rubric:: Model Constants
 
-    physical_momentum_reversal_numerical_gamma_range : float, default: 5.0
-        Initial range of gamma values to search over.
-    physical_momentum_reversal_numerical_max_iter : int, default: 20
-        Maximum number of times the range is doubled.
-    physical_momentum_reversal_numerical_num_points : int, default: 10
-        Number of grid points within the range on the searched side.
+    physical_momentum_reversal_numerical_gamma_initial : float, default: 1e-6
+        First value of :math:`\\gamma` on each side of zero, from which the search
+        doubles.
+    physical_momentum_reversal_numerical_max_doublings : int, default: 60
+        Maximum number of doublings of :math:`\\gamma` on each side of zero.
     physical_momentum_reversal_numerical_threshold : float, default: 1e-6
-        Energy threshold for convergence.
+        Threshold for convergence on the change of the classical energy divided by
+        :math:`\\gamma`.
 
     .. rubric:: Returns
 
@@ -483,12 +487,11 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
     """
     z = kwargs["z"]
     physical_z_conj_matrix = kwargs["physical_z_conj_matrix"]
-    gamma_range = model.constants.get(
-        "physical_momentum_reversal_numerical_gamma_range", 5.0
+    gamma_initial = model.constants.get(
+        "physical_momentum_reversal_numerical_gamma_initial", 1e-6
     )
-    max_iter = model.constants.get("physical_momentum_reversal_numerical_max_iter", 20)
-    num_points = model.constants.get(
-        "physical_momentum_reversal_numerical_num_points", 10
+    max_doublings = model.constants.get(
+        "physical_momentum_reversal_numerical_max_doublings", 60
     )
     thresh = model.constants.get("physical_momentum_reversal_numerical_threshold", 1e-6)
     unit_dir = functions.calc_z_physical_position_component(
@@ -507,25 +510,22 @@ def physical_momentum_reversal_numerical(model, parameters, **kwargs):
         )
         return np.real(energy[0]) - init_energy
 
-    # A small shift first identifies the side on which the classical energy decreases.
-    gamma_small = 1e-6 * gamma_range / num_points
-    energy_change_small = calc_energy_change(gamma_small)
-    if energy_change_small < 0:
-        side = 1.0
-    else:
-        energy_change_small = calc_energy_change(-gamma_small)
-        if energy_change_small >= 0:
-            # No physical momentum along the direction, so there is nothing to reverse.
-            return z.copy()
-        side = -1.0
+    energy_change_positive = calc_energy_change(gamma_initial)
+    energy_change_negative = calc_energy_change(-gamma_initial)
+    if energy_change_positive >= 0 and energy_change_negative >= 0:
+        # No physical momentum along the direction, so there is nothing to reverse.
+        return z.copy()
+    # The energy change vanishes at zero, so its nonzero roots are the roots of the
+    # energy change divided by gamma, whose value at zero is the slope there.
+    slope_zero = (energy_change_positive - energy_change_negative) / (
+        2.0 * gamma_initial
+    )
     gamma, _ = functions.calc_nearest_root(
-        calc_energy_change,
-        side * gamma_small,
-        energy_change_small,
-        (side,),
-        gamma_range,
-        num_points,
-        max_iter,
+        lambda gamma: calc_energy_change(gamma) / gamma,
+        slope_zero,
+        (1.0, -1.0),
+        gamma_initial,
+        max_doublings,
         thresh,
     )
     if gamma is None:

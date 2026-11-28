@@ -810,63 +810,63 @@ def calc_resc_dir_z_fssh(
 def numerical_fssh_hop(model, parameters, **kwargs):
     """
     Determines the shift required to conserve energy during a hop in FSSH using
-    an iterative numerical method. The coordinate following the hop is ``z + shift``.
+    an iterative numerical method. The complex-valued classical coordinates following
+    the hop are ``z + shift``.
 
-    The shift is ``-1j * gamma * resc_dir_z``, where ``gamma`` is the root of the energy
-    mismatch closest to zero. The algorithm is as follows:
-
-    1. Define the energy mismatch as the change of the classical energy under the
-       shift plus ``eigval_diff``, which is zero when the shift conserves the energy.
-    2. Step outward from ``gamma = 0`` in both directions on a grid with ``num_points``
-       points per side up to ``gamma_range``, and stop at the first point where the
-       mismatch changes sign.
-    3. If no sign change is found, double ``gamma_range`` and repeat step 2, up to
-       ``max_iter`` times.
-    4. Refine the bracketing interval by bisection until the magnitude of the
-       mismatch is less than the threshold.
-    5. If no sign change is found, or bisection does not converge, return a zero shift
-       and indicate that the hop was frustrated.
+    The shift is ``-1j * gamma * u``, where ``u`` is the unit vector along
+    ``resc_dir_z`` and ``gamma`` is the root of the energy mismatch closest to zero.
+    The energy mismatch is the change of the classical energy under the shift plus
+    ``eigval_diff``, which is zero when the shift conserves the energy. The root is
+    found by ``calc_nearest_root``. If there is none, or its refinement does not
+    converge, a zero shift is returned and the hop is frustrated. If ``resc_dir_z`` is
+    zero, a zero shift is returned, and the hop is successful only if the magnitude of
+    ``eigval_diff`` is less than the threshold. The function is called for a single
+    trajectory; shapes use C for the number of classical coordinates.
 
     .. rubric:: Keyword Arguments
-    z : ndarray
-        Current complex coordinate.
-    resc_dir_z : float
+
+    z : ndarray of shape (C,), dtype=complex128
+        Current complex-valued classical coordinates.
+    resc_dir_z : ndarray of shape (C,), dtype=complex128
         Rescaling direction.
     eigval_diff : float
-        Difference in eigenvalues between the initial and final states, ``e_final - e_initial``.
-
+        Difference in eigenvalues between the initial and final states,
+        ``e_final - e_initial``.
 
     .. rubric:: Model Constants
 
-    numerical_fssh_hop_gamma_range : float, default: 5.0
-        Initial range (negative to positive) of gamma values to search over.
-    numerical_fssh_hop_max_iter : int, default: 20
-        Maximum number of times the range is doubled.
-    numerical_fssh_hop_num_points : int, default: 10
-        Number of grid points on each side of zero.
+    numerical_fssh_hop_gamma_initial : float, default: 1e-6
+        First value of ``gamma`` on each side of zero, from which the search doubles.
+    numerical_fssh_hop_max_doublings : int, default: 60
+        Maximum number of doublings of ``gamma`` on each side of zero.
     numerical_fssh_hop_threshold : float, default: 1e-6
         Energy threshold for convergence.
 
     .. rubric:: Returns
 
-    ndarray
-        The shift to apply to the complex coordinate to conserve energy.
+    shift : ndarray of shape (C,), dtype=complex128
+        The shift to apply to the complex-valued classical coordinates to conserve
+        energy.
     hop_successful : bool
         Whether the hop was successful (i.e., energy conservation was achieved).
     """
     z = kwargs["z"]
     resc_dir_z = kwargs["resc_dir_z"]
     eigval_diff = kwargs["eigval_diff"]
-    gamma_range = model.constants.get("numerical_fssh_hop_gamma_range", 5.0)
-    max_iter = model.constants.get("numerical_fssh_hop_max_iter", 20)
-    num_points = model.constants.get("numerical_fssh_hop_num_points", 10)
+    gamma_initial = model.constants.get("numerical_fssh_hop_gamma_initial", 1e-6)
+    max_doublings = model.constants.get("numerical_fssh_hop_max_doublings", 60)
     thresh = model.constants.get("numerical_fssh_hop_threshold", 1e-6)
     h_c, _ = model.get("h_c")
     init_energy = h_c(model, parameters, z=np.array([z]), batch_size=1)[0]
+    resc_dir_z_norm = np.linalg.norm(resc_dir_z)
+    if resc_dir_z_norm == 0:
+        return np.zeros_like(z), np.abs(eigval_diff) < thresh
+    # A unit direction makes gamma independent of the length of resc_dir_z.
+    unit_dir = resc_dir_z / resc_dir_z_norm
 
     def calc_energy_mismatch(gamma):
         energy = h_c(
-            model, parameters, z=np.array([z - 1j * gamma * resc_dir_z]), batch_size=1
+            model, parameters, z=np.array([z - 1j * gamma * unit_dir]), batch_size=1
         )[0]
         return np.real(energy - init_energy + eigval_diff)
 
@@ -875,97 +875,180 @@ def numerical_fssh_hop(model, parameters, **kwargs):
         return np.zeros_like(z), True
     gamma, converged = calc_nearest_root(
         calc_energy_mismatch,
-        0.0,
         mismatch_zero,
         (1.0, -1.0),
-        gamma_range,
-        num_points,
-        max_iter,
+        gamma_initial,
+        max_doublings,
         thresh,
     )
     if not converged:
         return np.zeros_like(z), False
-    return -1j * gamma * resc_dir_z, True
+    return -1j * gamma * unit_dir, True
 
 
 def calc_nearest_root(
-    calc_value,
-    gamma_start,
-    value_start,
-    sides,
-    gamma_range,
-    num_points,
-    max_iter,
-    threshold,
+    calc_value, value_zero, sides, gamma_initial, max_doublings, threshold
 ):
     """
-    Find a root of a real function of ``gamma`` beyond ``gamma_start``, by stepping
-    outward from zero on the given sides.
+    Find the root of a real function of ``gamma`` closest to zero.
 
-    The search steps outward from zero on a grid of ``num_points`` points per side, up
-    to ``gamma_range``, skipping points up to ``gamma_start``, and stops at the first
-    point where the sign of the function differs from that at ``gamma_start``. If there
-    is none, ``gamma_range`` is doubled and the search repeated, up to ``max_iter``
-    times. The bracketing interval is then refined by bisection until the magnitude of
-    the function is less than ``threshold``.
+    On each given side of zero, the search steps outward geometrically, to
+    ``gamma_initial``, ``2 * gamma_initial``, ``4 * gamma_initial``, and so on, up to
+    ``max_doublings`` doublings. It stops at the first point where the function has the
+    opposite sign to its value at zero, or where its magnitude stops decreasing:
+
+    * At a sign change, the root is refined by bisection.
+    * Where the magnitude stops decreasing, the magnitude has a minimum between the
+      last three points, which is located by golden-section search. If the function
+      changes sign there, the root between zero and the minimum is refined by
+      bisection. If the magnitude at the minimum is less than ``threshold``, the
+      minimum is taken as the root. Otherwise, the side has no root.
+    * If the magnitude increases already at ``gamma_initial``, the side has no root.
+
+    Of the roots found on the given sides, the one closest to zero is returned. The
+    search does not use a fixed scale of ``gamma``, so roots close to zero and roots
+    close to each other are found as well, within the assumption given in the Notes.
 
     Parameters
     ----------
     calc_value : callable
-        Real function of ``gamma``.
-    gamma_start : float
-        Starting value of ``gamma``.
-    value_start : float
-        Value of the function at ``gamma_start``.
+        Real function of ``gamma``, called only for nonzero ``gamma``.
+    value_zero : float
+        Value of the function at zero.
     sides : tuple of float
         Sides of zero to search, ``1.0`` for positive and ``-1.0`` for negative
-        ``gamma``; at each grid point, the sides are tried in the given order.
-    gamma_range : float
-        Initial range of ``gamma`` values to search over.
-    num_points : int
-        Number of grid points on each side within the range.
-    max_iter : int
-        Maximum number of times the range is doubled.
+        ``gamma``.
+    gamma_initial : float
+        First value of ``gamma`` on each side, from which the search doubles.
+    max_doublings : int
+        Maximum number of doublings of ``gamma`` on each side.
     threshold : float
         Threshold on the magnitude of the function for convergence.
 
     Returns
     -------
     gamma : float or None
-        Root, or the last bisection midpoint if bisection does not converge; ``None``
-        if no sign change is found.
+        Root closest to zero, or the last bisection midpoint if its bisection does not
+        converge; ``None`` if no root is found.
     converged : bool
         Whether the magnitude of the function at ``gamma`` is less than ``threshold``.
+
+    Notes
+    -----
+    * On each side, the function is assumed to approach zero before turning away from
+      it, as for the energy mismatch of a hop in ``numerical_fssh_hop`` and the energy
+      change divided by ``gamma`` in ``physical_momentum_reversal_numerical``. A root
+      that is preceded by a stretch in which the magnitude of the function increases
+      is not found.
     """
-    sign_start = np.sign(value_start)
-    gamma_inner = {side: gamma_start for side in sides}
-    bracket = None
-    for _ in range(max_iter):
-        gamma_step = gamma_range / num_points
-        for point_ind in range(1, num_points + 1):
-            for side in sides:
-                gamma_outer = side * point_ind * gamma_step
-                if np.abs(gamma_outer) <= np.abs(gamma_inner[side]):
-                    continue
-                if np.sign(calc_value(gamma_outer)) != sign_start:
-                    bracket = (gamma_inner[side], gamma_outer)
-                    break
-                gamma_inner[side] = gamma_outer
-            if bracket is not None:
-                break
-        if bracket is not None:
-            break
-        gamma_range = gamma_range * 2.0
-    if bracket is None:
+    if value_zero == 0:
+        return 0.0, True
+    roots = []
+    for side in sides:
+        gamma, converged = _calc_nearest_root_side(
+            calc_value, value_zero, side, gamma_initial, max_doublings, threshold
+        )
+        if gamma is not None:
+            roots.append((np.abs(gamma), gamma, converged))
+    if not roots:
         return None, False
-    gamma_lower, gamma_upper = bracket
+    _, gamma, converged = min(roots, key=lambda root: root[0])
+    return gamma, converged
+
+
+def _calc_nearest_root_side(
+    calc_value, value_zero, side, gamma_initial, max_doublings, threshold
+):
+    """
+    Finds the root of ``calc_value`` closest to zero on one side, for
+    ``calc_nearest_root``. Works with the function times the sign of its value at zero,
+    which is positive until the first root.
+    """
+    sign_zero = np.sign(value_zero)
+    # Points (gamma, sign_zero * value) along the side, starting at zero.
+    points = [(0.0, np.abs(value_zero))]
+    gamma = side * gamma_initial
+    for _ in range(max_doublings + 1):
+        value = sign_zero * calc_value(gamma)
+        if value <= 0:
+            return _bisect_root(calc_value, sign_zero, points[-1][0], gamma, threshold)
+        if value >= points[-1][1]:
+            if len(points) == 1:
+                return None, False
+            return _calc_root_via_minimum(
+                calc_value, sign_zero, points[-2], points[-1], (gamma, value), threshold
+            )
+        points.append((gamma, value))
+        gamma = 2.0 * gamma
+    return None, False
+
+
+def _calc_root_via_minimum(calc_value, sign_zero, point_a, point_b, point_c, threshold):
+    """
+    Golden-section search for the minimum of ``sign_zero * calc_value`` between
+    ``point_a`` and ``point_c``, given the point ``point_b`` between them with the
+    lowest value, for ``calc_nearest_root``. Points are tuples
+    ``(gamma, sign_zero * value)``, with ``point_a`` closest to zero. Stops at the first
+    point with a nonpositive value and refines the root between it and zero by
+    bisection.
+    """
+    golden_fraction = (3.0 - np.sqrt(5.0)) / 2.0
+    evaluated = [point_a, point_b, point_c]
+    # 100 golden-section steps reduce the bracket far below any useful resolution.
+    for _ in range(100):
+        gamma_a, gamma_b, gamma_c = point_a[0], point_b[0], point_c[0]
+        if np.abs(gamma_c - gamma_a) <= 1e-12 * np.abs(gamma_c):
+            break
+        if np.abs(gamma_c - gamma_b) > np.abs(gamma_b - gamma_a):
+            gamma_new = gamma_b + golden_fraction * (gamma_c - gamma_b)
+        else:
+            gamma_new = gamma_b - golden_fraction * (gamma_b - gamma_a)
+        value_new = sign_zero * calc_value(gamma_new)
+        if value_new <= 0:
+            # The root closest to zero lies between this point and the farthest point
+            # from zero that is closer to zero and has a positive value.
+            gamma_lower = max(
+                (
+                    point[0]
+                    for point in evaluated
+                    if np.abs(point[0]) < np.abs(gamma_new)
+                ),
+                key=np.abs,
+            )
+            return _bisect_root(
+                calc_value, sign_zero, gamma_lower, gamma_new, threshold
+            )
+        evaluated.append((gamma_new, value_new))
+        beyond_b = np.abs(gamma_new) > np.abs(gamma_b)
+        if value_new < point_b[1]:
+            if beyond_b:
+                point_a = point_b
+            else:
+                point_c = point_b
+            point_b = (gamma_new, value_new)
+        elif beyond_b:
+            point_c = (gamma_new, value_new)
+        else:
+            point_a = (gamma_new, value_new)
+    if point_b[1] < threshold:
+        return point_b[0], True
+    return None, False
+
+
+def _bisect_root(calc_value, sign_zero, gamma_lower, gamma_upper, threshold):
+    """
+    Bisection for the root of ``calc_value`` between ``gamma_lower``, where it has the
+    sign ``sign_zero``, and ``gamma_upper``, where it does not, for
+    ``calc_nearest_root``.
+    """
+    gamma_mid = gamma_upper
     # 100 bisection steps reduce the bracket far below any useful resolution.
     for _ in range(100):
         gamma_mid = 0.5 * (gamma_lower + gamma_upper)
         value_mid = calc_value(gamma_mid)
         if np.abs(value_mid) < threshold:
             return gamma_mid, True
-        if np.sign(value_mid) == sign_start:
+        if np.sign(value_mid) == sign_zero:
             gamma_lower = gamma_mid
         else:
             gamma_upper = gamma_mid
